@@ -11,22 +11,31 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 | Monorepo | pnpm workspaces + Turborepo |
 | Dashboard | Next.js (App Router) + Tailwind CSS + shadcn/ui (`apps/web`) |
 | Dashboard backend | Next.js route handlers / server actions |
-| Auth | Auth.js (NextAuth) — GitHub OAuth + email/password |
+| Auth | Auth.js v5 — GitHub OAuth + email/password (argon2) |
 | Gateway | Node + Fastify + `@modelcontextprotocol/sdk`, Streamable HTTP (`apps/gateway`) |
 | Worker | BullMQ log consumer (`apps/worker`) |
 | Database | PostgreSQL + Prisma (`packages/db`) |
 | Cache / queues / rate limits | Redis |
 | OpenAPI parsing | `@apidevtools/swagger-parser` (`packages/openapi-tools`) |
-| Shared types | Zod (`packages/shared`) |
+| Shared types + SSRF helper | Zod (`packages/shared`) |
 | Tests | Vitest (unit/integration), Playwright (E2E) |
 | Local infra | Docker Compose (Postgres + Redis) |
 | CI | GitHub Actions |
+
+## Phase Status
+
+- **Phase 0: Foundation** ✅ Done (merged to main)
+- **Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** — next
+- **Phase 2: Hosted MCP Server** — future
+- **Phase 3: Rate Limiting and Logging** — future
+- **Phase 4: Analytics Dashboard** — future
+- **Phase 5: Playground, Polish, Deploy** — future
 
 ## Working Rules (from spec §10)
 
 - Ask before adding a dependency not in the stack table, and explain why it is needed.
 - Prefer simple, readable code over clever abstractions. This codebase will be read by interviewers.
-- Write tests alongside features, not at the end. Pure logic (`openapi-tools`, `crypto`, rate limiter) needs thorough unit tests.
+- Write tests alongside features, not at the end. Pure logic (`openapi-tools`, `crypto`, rate limiter, SSRF helper) needs thorough unit tests.
 - Keep `docs/DECISIONS.md` updated with one short entry per significant technical choice.
 - If a requirement in the spec is unclear or conflicts with how the current MCP SDK works, stop and ask instead of guessing.
 - Never weaken a security requirement to make something work.
