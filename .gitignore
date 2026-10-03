@@ -26,6 +26,7 @@ coverage/
 # Prisma
 *.db
 *.db-journal
+src/generated/
 
 # Logs
 *.log
