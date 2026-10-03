@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth.js tables ─────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  password      String?   // bcrypt hash for email/password auth
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts Account[]
+  sessions Session[]
+  projects Project[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ── App models ─────────────────────────────────────────────────────────────
+
+model Project {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  name            String
+  slug            String   @unique
+  upstreamBaseUrl String   @map("upstream_base_url")
+  openapiSpec     Json?    @map("openapi_spec")
+  specHash        String?  @map("spec_hash")
+  specVersion     String?  @map("spec_version")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upstreamCredential UpstreamCredential?
+  tools              Tool[]
+  apiKeys            ApiKey[]
+  toolCallLogs       ToolCallLog[]
+  usageRollups       UsageRollup[]
+
+  @@map("projects")
+}
+
+enum CredentialType {
+  NONE
+  BEARER
+  CUSTOM_HEADER
+  QUERY_PARAM
+}
+
+model UpstreamCredential {
+  id             String         @id @default(cuid())
+  projectId      String         @unique @map("project_id")
+  type           CredentialType @default(NONE)
+  encryptedValue String?        @map("encrypted_value")
+  headerName     String?        @map("header_name")
+  queryParamName String?        @map("query_param_name")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("upstream_credentials")
+}
+
+model Tool {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  operationId String   @map("operation_id")
+  method      String
+  path        String
+  name        String
+  description String   @db.Text
+  inputSchema Json     @map("input_schema")
+  enabled     Boolean  @default(true)
+  hiddenParams Json    @default("{}") @map("hidden_params")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  toolCallLogs ToolCallLog[]
+  usageRollups UsageRollup[]
+
+  @@unique([projectId, operationId])
+  @@map("tools")
+}
+
+model ApiKey {
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
+  name            String
+  prefix          String
+  hash            String    @unique
+  rateLimitPerMin Int       @default(60) @map("rate_limit_per_min")
+  lastUsedAt      DateTime? @map("last_used_at")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  toolCallLogs ToolCallLog[]
+
+  @@map("api_keys")
+}
+
+model ToolCallLog {
+  id             String   @id @default(cuid())
+  projectId      String   @map("project_id")
+  toolId         String?  @map("tool_id")
+  apiKeyId       String?  @map("api_key_id")
+  input          Json
+  output         String?  @db.Text
+  upstreamStatus Int?     @map("upstream_status")
+  latencyMs      Int      @map("latency_ms")
+  success        Boolean
+  errorMessage   String?  @db.Text @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tool    Tool?    @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  apiKey  ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@map("tool_call_logs")
+}
+
+model UsageRollup {
+  id           String   @id @default(cuid())
+  projectId    String   @map("project_id")
+  toolId       String   @map("tool_id")
+  hour         DateTime
+  calls        Int      @default(0)
+  errors       Int      @default(0)
+  p50LatencyMs Int?     @map("p50_latency_ms")
+  p95LatencyMs Int?     @map("p95_latency_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tool    Tool    @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, toolId, hour])
+  @@map("usage_rollups")
+}
