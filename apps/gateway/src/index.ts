@@ -1,4 +1,10 @@
-import 'dotenv/config'
+import { config as loadEnv } from 'dotenv'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+loadEnv({ path: resolve(__dirname, '../../../.env') })
+
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { db } from '@mcp-gateway/db'

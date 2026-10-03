@@ -1,5 +1,12 @@
+import { config as loadEnv } from 'dotenv'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/client/client.js'
+
+// Load root .env for local dev; override:false means shell/CI vars always win.
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+loadEnv({ path: resolve(__dirname, '../../../.env'), override: false })
 
 function createPrismaClient() {
   const connectionString = process.env['DATABASE_URL']
