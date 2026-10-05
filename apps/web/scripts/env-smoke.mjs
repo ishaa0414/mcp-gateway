@@ -12,7 +12,9 @@
  *   unset DATABASE_URL
  *   node scripts/env-smoke.mjs
  */
-import { loadEnvConfig } from '@next/env'
+// @next/env is CommonJS — use default import to avoid "named export not found" in Node ESM
+import pkg from '@next/env'
+const { loadEnvConfig } = pkg
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
