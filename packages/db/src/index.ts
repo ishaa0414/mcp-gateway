@@ -5,8 +5,13 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/client/client.js'
 
 // Load root .env for local dev; override:false means shell/CI vars always win.
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-loadEnv({ path: resolve(__dirname, '../../../.env'), override: false })
+// Skipped when import.meta.url is not a file:// URL (e.g. Turbopack bundle context during next build).
+try {
+  const __dirname = fileURLToPath(new URL('.', import.meta.url))
+  loadEnv({ path: resolve(__dirname, '../../../.env'), override: false })
+} catch {
+  // Not a file:// URL — running inside a bundler, env is already provided
+}
 
 function createPrismaClient() {
   const connectionString = process.env['DATABASE_URL']
