@@ -84,3 +84,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Smoke test — root .env loaded without shell DATABASE_URL
+        run: |
+          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
+          unset DATABASE_URL
+          cd apps/web && node scripts/env-smoke.mjs
