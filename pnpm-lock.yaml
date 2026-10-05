@@ -239,6 +239,9 @@ importers:
       '@mcp-gateway/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@next/env':
+        specifier: 16.3.8
+        version: 16.3.8
       '@node-rs/argon2':
         specifier: ^2.2.1
         version: 2.2.1
