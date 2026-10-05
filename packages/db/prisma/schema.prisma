@@ -125,10 +125,11 @@ model Tool {
   name        String
   description String   @db.Text
   inputSchema Json     @map("input_schema")
-  enabled     Boolean  @default(true)
-  hiddenParams Json    @default("{}") @map("hidden_params")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  enabled     Boolean   @default(true)
+  hiddenParams Json     @default("{}") @map("hidden_params")
+  removedAt   DateTime? @map("removed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   toolCallLogs ToolCallLog[]
