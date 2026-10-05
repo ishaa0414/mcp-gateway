@@ -1,0 +1,85 @@
+openapi: "3.1.0"
+info:
+  title: Complex API
+  version: "2.0.0"
+servers:
+  - url: https://api.complex.example/v2
+
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      summary: List users with filters
+      parameters:
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [admin, user, guest]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of users
+
+  /users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getUser
+      summary: Get a user
+      responses:
+        "200":
+          description: A user
+    patch:
+      operationId: updateUser
+      summary: Update a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Display name
+                role:
+                  type: string
+                  enum: [admin, user, guest]
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Updated user
+
+  /items:
+    post:
+      # no operationId — should generate name from method + path
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                count:
+                  type: integer
+      responses:
+        "201":
+          description: Item created

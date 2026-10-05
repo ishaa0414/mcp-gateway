@@ -1,12 +1,5 @@
-// OpenAPI → MCP tool conversion — implemented in Phase 2
-
-export type OpenApiToolDefinition = {
-  operationId: string
-  method: string
-  path: string
-  name: string
-  description: string
-  inputSchema: Record<string, unknown>
-}
-
-export const placeholder = 'openapi-tools stub — Phase 2'
+export { parseSpec, ParseError } from './parse.js'
+export { extractTools, sanitizeName, validateToolName } from './extract.js'
+export { mergeTools } from './merge.js'
+export type { ToolDefinition, JsonSchema, MergeResult, MergedTool } from './types.js'
+export type { ExistingTool } from './merge.js'

@@ -15,10 +15,12 @@
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
+    "openapi-types": "^12.1.3",
+    "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
