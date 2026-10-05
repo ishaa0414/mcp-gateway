@@ -1,3 +1,6 @@
+// All dashboard pages are authenticated and data-driven — never statically generated.
+export const dynamic = 'force-dynamic'
+
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
