@@ -13,7 +13,7 @@ try {
   // Not a file:// URL — running inside a bundler, env is already provided
 }
 
-function createPrismaClient() {
+function createPrismaClient(): PrismaClient {
   const connectionString = process.env['DATABASE_URL']
   if (!connectionString) throw new Error('DATABASE_URL environment variable is not set')
   const adapter = new PrismaPg({ connectionString })
@@ -24,10 +24,22 @@ declare global {
   var __prisma: PrismaClient | undefined
 }
 
-export const db: PrismaClient =
-  process.env['NODE_ENV'] === 'production'
-    ? createPrismaClient()
-    : (globalThis.__prisma ??= createPrismaClient())
+function getClient(): PrismaClient {
+  if (process.env['NODE_ENV'] === 'production') {
+    return createPrismaClient()
+  }
+  return (globalThis.__prisma ??= createPrismaClient())
+}
+
+// Lazy proxy: defers PrismaClient creation to first method call.
+// This prevents the module import from throwing when DATABASE_URL is not
+// available at build time (e.g. next build page-config collection workers).
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getClient() as any)[prop]
+  },
+})
 
 export { PrismaClient } from './generated/client/client.js'
 export type * from './generated/client/client.js'
