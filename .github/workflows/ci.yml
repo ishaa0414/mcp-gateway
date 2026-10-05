@@ -38,6 +38,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mcpgateway
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/mcpgateway_test
       REDIS_URL: redis://localhost:6379
       ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
       NODE_ENV: test
@@ -60,8 +61,17 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
-      - name: Apply migrations
+      - name: Apply migrations (dev DB)
         run: pnpm db:migrate:deploy
+
+      - name: Create test database
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432 -c "CREATE DATABASE mcpgateway_test;" || true
+
+      - name: Apply migrations (test DB)
+        run: pnpm db:migrate:deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mcpgateway_test
 
       - name: Lint
         run: pnpm lint

@@ -46,6 +46,40 @@ Short log of significant technical choices and their rationale.
 **Decision:** Use BullMQ `^6.3.11`.
 **Why:** Current stable major. BullMQ 6 uses `ioredis` 5.x which is the widely-used Redis client in the ecosystem. No breaking changes from BullMQ 5 for our use case.
 
+---
+
+## Phase 1
+
+### `@node-rs/argon2` for password hashing
+**Decision:** Use `@node-rs/argon2` instead of `bcrypt` or `argon2`.
+**Why:** Provides pre-built native binaries — no compiler toolchain needed, works on Windows without MSVC. Argon2id is the current OWASP-recommended password hashing algorithm. `@node-rs/argon2@2.x` ships binaries for Node 22 + all major platforms.
+
+### undici + custom DNS lookup for SSRF protection
+**Decision:** Use `undici` with a pre-connect DNS validation hook instead of a fetch wrapper or a WAF.
+**Why:** Validate every resolved IP against the RFC 1918 / CGNAT / link-local / IPv6 blocklist before connecting. Rewrite the URL to use the validated IP and set `Host` / SNI headers explicitly. This prevents DNS rebinding attacks. Manual redirect following (max 3 hops, re-validate each hop) closes TOCTOU gaps. The approach is defence-in-depth at the library level.
+
+### JWT-only sessions (no database Session rows)
+**Decision:** Use `session: { strategy: 'jwt' }` for all providers including GitHub OAuth.
+**Why:** The Credentials provider requires JWT sessions (database sessions require per-request DB reads for every RSC). JWT is simpler operationally and sufficient for Phase 1. The `Session` table is retained in the schema for the Auth.js adapter's schema compliance.
+
+### No auto-linking of GitHub OAuth to password accounts
+**Decision:** If a GitHub OAuth login's email matches an existing password account, return an error instead of auto-linking.
+**Why:** Auto-linking can allow account takeover: an attacker who controls a GitHub account with the target email could hijack a password account. The user is shown a clear error message and instructed to sign in with their password.
+
+### Project slug globally unique, immutable
+**Decision:** `slug` is globally unique (enforced by `@@unique` in Prisma), validated as `^[a-z0-9-]{3,48}$`, and not editable after creation.
+**Why:** The slug is part of the public MCP endpoint URL (`/mcp/:slug`). Changing it would break all existing connections. Global uniqueness avoids URL collisions across users.
+
+### `removedAt` soft-delete on Tool
+**Decision:** Add `removedAt DateTime?` to Tool instead of hard-deleting when an operation disappears from a re-imported spec.
+**Why:** Preserves user edits and tool call logs. Users can see which tools were removed and the badge ("Removed from spec") makes the state visible. Re-adding the operation to the spec clears `removedAt`.
+
+### Separate `mcpgateway_test` database for integration tests
+**Decision:** Integration tests use `DATABASE_URL_TEST` (defaults to `mcpgateway_test` DB), never `DATABASE_URL`.
+**Why:** Prevents test runs from corrupting development data. Vitest global setup runs `prisma migrate deploy` on the test DB before tests run, keeping schema in sync.
+
+---
+
 ### pnpm `onlyBuiltDependencies` / `allowBuilds` in `pnpm-workspace.yaml`
 **Decision:** Explicitly allowlist `@prisma/engines`, `esbuild`, `msgpackr-extract`, and `prisma` for build scripts.
 **Why:** pnpm 12 blocks all build scripts by default for supply-chain security. These four packages are known to need native compilation (Prisma query engine, esbuild binary, msgpackr native module). The `pnpm-workspace.yaml` approach is the pnpm 12-recommended way to approve builds without per-developer prompts.
