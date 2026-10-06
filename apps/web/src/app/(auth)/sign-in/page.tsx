@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { signIn } from 'next-auth/react'
+import { emailSchema } from '@/lib/email'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,7 @@ import { useState } from 'react'
 import { GitBranch } from 'lucide-react'
 
 const schema = z.object({
-  email: z.string().email('Invalid email'),
+  email: emailSchema,
   password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 type FormData = z.infer<typeof schema>

@@ -1,5 +1,4 @@
-import { loadEnvConfig } from '@next/env'
-import { resolve } from 'node:path'
+import { loadRootEnv } from '@/lib/root-env'
 import { env } from '@/lib/env'
 
 // Next.js only loads .env from apps/web, so the monorepo root .env is loaded
@@ -7,8 +6,8 @@ import { env } from '@/lib/env'
 // sandbox reads this same process.env, so this one call covers pages, route
 // handlers, server actions and middleware in both `next dev` and `next start`.
 // Calling loadEnvConfig from next.config.ts instead does NOT work: that only
-// mutates the CLI process, not the server runtime. process.cwd() is apps/web.
-loadEnvConfig(resolve(process.cwd(), '../..'))
+// mutates the CLI process, not the server runtime.
+loadRootEnv()
 
 try {
   env()

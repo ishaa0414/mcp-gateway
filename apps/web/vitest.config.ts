@@ -7,13 +7,12 @@ export default defineConfig({
     globalSetup: './src/test/global-setup.ts',
     setupFiles: ['./src/test/setup.ts'],
     passWithNoTests: true,
-    alias: {
-      '@/': path.resolve(__dirname, 'src/'),
-    },
   },
   resolve: {
-    alias: {
-      '@/': path.resolve(__dirname, 'src/'),
-    },
+    alias: [
+      { find: /^@\//, replacement: path.resolve(__dirname, 'src') + '/' },
+      // `server-only` throws unless bundled with the react-server condition; Vitest runs plain Node.
+      { find: /^server-only$/, replacement: path.resolve(__dirname, 'src/test/server-only-stub.ts') },
+    ],
   },
 })

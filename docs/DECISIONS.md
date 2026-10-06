@@ -87,3 +87,23 @@ Short log of significant technical choices and their rationale.
 ### Root `.env` loaded per app at runtime; validated with Zod at startup
 **Decision:** Library packages (`packages/db`) never load `.env`. Each app loads the root `.env` itself — web in `src/instrumentation-node.ts` via `@next/env`, gateway/worker in `src/env.ts` via `dotenv` — then validates it with a per-app Zod schema through the shared `validateEnv`, which throws one error listing every missing/invalid variable and exits.
 **Why:** Next.js only reads `.env` from `apps/web`. Calling `loadEnvConfig` from `next.config.ts` looked right but only mutates the CLI process — verified on Next 16 + Turbopack that the server runtime never saw those values. `register()` in instrumentation is documented to finish before any request is served, and middleware reads the same `process.env`, so one load there covers dev and `next start`. CI previously passed only because it set the variables in the job env; a smoke step now unsets `DATABASE_URL`/`AUTH_SECRET` and checks `/api/health` (public, `SELECT 1`), `/api/auth/providers` and the signed-out redirect.
+
+### Tool edits are detected against a stored spec baseline
+**Decision:** `Tool` stores `specName` / `specDescription` (what the spec last produced). A user edit is `name != specName`; re-import overwrites `name`/`description` only while they still equal the baseline, and always advances the baseline. `enabled` and `hiddenParams` are never part of an import write. `mergeTools` returns only the rows that changed, so identical specs report `0 updated` and `N unchanged`.
+**Why:** The first design relied on a `userEdited` flag that no code ever stored or passed, and the unit tests fed it in by hand, so they passed while the real app silently reverted every edit. A baseline needs no flag to be kept in sync and survives edits made anywhere. Schemas are compared with an order-insensitive deep equal because Postgres JSONB reorders keys, which previously made every tool look "updated".
+
+### Upstream base URL: always absolute, SSRF-checked on save
+**Decision:** `servers[0].url` is resolved by `resolveBaseUrl` (variable defaults substituted; relative URLs resolved against the spec URL when imported by URL, left unset for file uploads). Every save path (create, Settings, import) goes through `assertPublicHttpUrl` (http/https only, no credentials, host must resolve to a public address, same blocklist as `ssrfFetch`). An import never overwrites a base URL that is already set.
+**Why:** A relative value like `/api/v3` cannot be called, and a private host saved today becomes an SSRF at call time. Failing at save gives the user the reason immediately.
+
+### Tailwind 4 needs the shadcn tokens registered in `@theme inline`
+**Decision:** `globals.css` maps every `--background`, `--primary`, … variable to a `--color-*` token and defines `@custom-variant dark` on the `.dark` class.
+**Why:** shadcn assumes Tailwind 3's `tailwind.config`. Under Tailwind 4 without the mapping, `bg-primary`, `bg-background`, `text-destructive` etc. compile to nothing, which made switches, dialogs and buttons look broken everywhere at once.
+
+### `server-only` on the web DB wrapper plus a lint rule
+**Decision:** `apps/web/src/lib/db.ts` imports `server-only`; ESLint forbids value imports of `@mcp-gateway/db` elsewhere in the web app (type imports allowed). The guard lives in the web app, not `packages/db`, which the gateway and worker run outside React.
+**Why:** A client component pulling Prisma into the browser bundle fails the build instead of surfacing as a runtime error. Verified by importing the wrapper from a client page and watching the build fail.
+
+### One PrismaClient per process, in every environment
+**Decision:** The lazy `db` proxy always returns the same client (cached on `globalThis`).
+**Why:** In production it built a new client per property access, so an interactive transaction began on one client and ran its queries on another ("Transaction not found") and each call leaked a connection pool. Development cached the client and hid it; only a production-build test found it.
