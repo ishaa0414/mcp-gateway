@@ -196,6 +196,9 @@ importers:
       '@mcp-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@mcp-gateway/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       dotenv:
         specifier: ^16.4.0
         version: 16.6.1
@@ -333,6 +336,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@mcp-gateway/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bullmq:
         specifier: ^6.3.11
         version: 6.3.11(ioredis@5.11.1)(pg@8.23.1)

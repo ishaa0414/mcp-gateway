@@ -42,7 +42,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
       NODE_ENV: test
-      AUTH_SECRET: ci-secret-not-real
+      AUTH_SECRET: ci-only-not-a-real-secret-0000000000000000
       AUTH_URL: http://localhost:3000
 
     steps:
@@ -85,8 +85,40 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Smoke test — root .env loaded without shell DATABASE_URL
+      # Regression guard: the web app must read DATABASE_URL and AUTH_SECRET from
+      # the root .env, not from the shell. CI sets them as job env, which is what
+      # hid the original bug, so they are unset here.
+      - name: Smoke test — web app reads root .env
+        env:
+          NODE_ENV: production
         run: |
-          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
-          unset DATABASE_URL
-          cd apps/web && node scripts/env-smoke.mjs
+          {
+            printf 'DATABASE_URL=%s\n'   "$DATABASE_URL"
+            printf 'AUTH_SECRET=%s\n'    "$AUTH_SECRET"
+            printf 'AUTH_URL=%s\n'       "$AUTH_URL"
+            printf 'REDIS_URL=%s\n'      "$REDIS_URL"
+            printf 'ENCRYPTION_KEY=%s\n' "$ENCRYPTION_KEY"
+          } > .env
+          unset DATABASE_URL AUTH_SECRET
+
+          cd apps/web
+          pnpm start > /tmp/web.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null http://localhost:3000/api/health && break
+            sleep 1
+          done
+
+          check() {
+            local got
+            got=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000$1")
+            echo "$1 -> $got (expected $2)"
+            [ "$got" = "$2" ]
+          }
+          ok=true
+          check /api/health 200         || ok=false  # queries Postgres
+          check /api/auth/providers 200 || ok=false  # needs AUTH_SECRET
+          check /projects 307           || ok=false  # middleware redirect when signed out
+
+          echo '--- next start output ---'
+          cat /tmp/web.log
+          $ok

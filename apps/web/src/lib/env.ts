@@ -1,34 +1,38 @@
-import { z } from 'zod'
+import { validateEnv, z } from '@mcp-gateway/shared'
 
+// Auth.js v5 reads AUTH_SECRET / AUTH_URL / AUTH_GITHUB_*. The v4 names
+// (NEXTAUTH_SECRET, GITHUB_CLIENT_ID, ...) are not recognised and fail at
+// runtime with a bare "MissingSecret", so they are rejected here by name.
 const schema = z.object({
-  AUTH_SECRET: z.string().min(1, 'AUTH_SECRET is required'),
-  AUTH_URL: z.string().url('AUTH_URL must be a valid URL'),
-  AUTH_GITHUB_ID: z.string().optional(),
-  AUTH_GITHUB_SECRET: z.string().optional(),
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
-  ENCRYPTION_KEY: z.string().length(64, 'ENCRYPTION_KEY must be 64 hex chars (32 bytes)'),
-  GATEWAY_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  ALLOW_PRIVATE_UPSTREAMS: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => v === 'true'),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
+  AUTH_SECRET: z.string().min(32, 'must be at least 32 characters (openssl rand -hex 32)'),
+  AUTH_URL: z.url('must be an absolute URL, e.g. http://localhost:3000'),
+  AUTH_GITHUB_ID: z.string().min(1).optional(),
+  AUTH_GITHUB_SECRET: z.string().min(1).optional(),
+
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().min(1),
+
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex characters (32 bytes, openssl rand -hex 32)'),
+
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 
-function parseEnv() {
-  const result = schema.safeParse(process.env)
-  if (!result.success) {
-    const messages = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`)
-    throw new Error(`Invalid environment variables:\n${messages.join('\n')}`)
-  }
-  return result.data
+export type WebEnv = z.infer<typeof schema>
+
+export function parseWebEnv(source: Record<string, string | undefined>): WebEnv {
+  return validateEnv({
+    schema,
+    appName: 'web',
+    envFile: '.env at the repo root (loaded by apps/web/src/instrumentation-node.ts)',
+    source,
+  })
 }
 
-// Memoize — parse once at startup
-let cached: ReturnType<typeof parseEnv> | null = null
+let cached: WebEnv | undefined
 
-export function env() {
-  if (!cached) cached = parseEnv()
+export function env(): WebEnv {
+  cached ??= parseWebEnv(process.env)
   return cached
 }

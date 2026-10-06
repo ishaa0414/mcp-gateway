@@ -10,9 +10,9 @@ export const config = {
     /*
      * Protect all routes except:
      * - static files (_next/static, _next/image, favicon)
-     * - public API routes (none yet)
+     * - api/health (public liveness probe; must not need AUTH_SECRET)
      * - auth pages handled by authConfig.callbacks.authorized
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

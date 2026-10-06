@@ -5,10 +5,10 @@ function createPrismaClient(): PrismaClient {
   const connectionString = process.env['DATABASE_URL']
   if (!connectionString) {
     throw new Error(
-      'DATABASE_URL is not set.\n' +
-        '  • Next.js: apps/web/next.config.ts must call loadEnvConfig() from @next/env pointing at the repo root.\n' +
-        '  • gateway / worker: dotenv loads ../../.env relative to the compiled output (already handled in each app).\n' +
-        '  • CI / production: set DATABASE_URL as an environment variable.',
+      'DATABASE_URL is not set. This package does not load .env itself; the app importing it must.\n' +
+        '  • web: apps/web/src/instrumentation-node.ts loads the root .env.\n' +
+        '  • gateway / worker: src/env.ts in each app loads the root .env.\n' +
+        '  • If this appears in the browser console, server-only code was imported into a client component.',
     )
   }
   const adapter = new PrismaPg({ connectionString })

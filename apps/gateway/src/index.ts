@@ -1,9 +1,6 @@
-import { config as loadEnv } from 'dotenv'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-loadEnv({ path: resolve(__dirname, '../../../.env') })
+// Must be first: loads the root .env and validates it before any module that
+// reads process.env at import time (e.g. @mcp-gateway/db).
+import { env } from './env.js'
 
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
@@ -14,7 +11,7 @@ const fastify = Fastify({ logger: true })
 
 await fastify.register(cors, { origin: true })
 
-const redis = new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379', {
+const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 3,
   lazyConnect: true,
 })
@@ -42,10 +39,8 @@ fastify.get('/health', async (_req, reply) => {
   return reply.status(allOk ? 200 : 503).send(status)
 })
 
-const port = Number(process.env['GATEWAY_PORT'] ?? 4000)
-
 try {
-  await fastify.listen({ port, host: '0.0.0.0' })
+  await fastify.listen({ port: env.GATEWAY_PORT, host: '0.0.0.0' })
 } catch (err) {
   fastify.log.error(err)
   process.exit(1)
