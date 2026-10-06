@@ -1,4 +1,5 @@
 import { config as loadEnv } from 'dotenv'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateEnv } from '@mcp-gateway/shared'
@@ -14,4 +15,9 @@ export const ROOT_ENV_PATH = resolve(here, '../../../.env')
 // variables that are already set always win.
 loadEnv({ path: ROOT_ENV_PATH })
 
-export const env = validateEnv({ schema: gatewayEnvSchema, appName: 'gateway', envFile: ROOT_ENV_PATH })
+export const env = validateEnv({
+  schema: gatewayEnvSchema,
+  appName: 'gateway',
+  // In a container there is no .env file; say where the variables are really expected.
+  envFile: existsSync(ROOT_ENV_PATH) ? ROOT_ENV_PATH : 'the process environment (set them on your host or container)',
+})

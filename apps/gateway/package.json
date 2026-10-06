@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --build",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
     "lint": "eslint src",
@@ -30,5 +30,8 @@
     "tsx": "^4.19.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
