@@ -12,7 +12,7 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 | Dashboard | Next.js (App Router) + Tailwind CSS + shadcn/ui (`apps/web`) |
 | Dashboard backend | Next.js route handlers / server actions |
 | Auth | Auth.js v5 — GitHub OAuth + email/password (argon2) |
-| Gateway | Node + Fastify + `@modelcontextprotocol/sdk`, Streamable HTTP (`apps/gateway`) |
+| Gateway | Node + Fastify + MCP SDK v2 (`@modelcontextprotocol/server` + `@modelcontextprotocol/node`), Streamable HTTP, stateless (`apps/gateway`) |
 | Worker | BullMQ log consumer (`apps/worker`) |
 | Database | PostgreSQL + Prisma (`packages/db`) |
 | Cache / queues / rate limits | Redis |

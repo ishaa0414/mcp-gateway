@@ -29,7 +29,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 | Dashboard | Next.js (App Router) + Tailwind CSS + shadcn/ui, in `apps/web` |
 | Dashboard backend | Next.js route handlers / server actions inside `apps/web` |
 | Dashboard auth | Auth.js (NextAuth) with GitHub OAuth + email/password |
-| Gateway | Node + Fastify + official MCP TypeScript SDK (`@modelcontextprotocol/sdk`), Streamable HTTP transport, in `apps/gateway` |
+| Gateway | Node + Fastify + official MCP TypeScript SDK v2 (`@modelcontextprotocol/server` + `@modelcontextprotocol/node`; the old `@modelcontextprotocol/sdk` is v1, now maintenance-only), Streamable HTTP transport, in `apps/gateway` |
 | Background worker | BullMQ consumer for logs, in `apps/worker` |
 | Database | PostgreSQL + Prisma, schema in `packages/db` |
 | Cache / queues / rate limits | Redis |
@@ -39,7 +39,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 | Local infra | Docker Compose (Postgres + Redis) |
 | CI | GitHub Actions: lint, typecheck, test on every PR |
 
-**Important:** the MCP spec and SDK change quickly. Before writing any MCP code, read the current SDK README and examples (in `node_modules/@modelcontextprotocol/sdk` and the official docs) and follow the current APIs. Do not rely on memory for SDK class names or transport details.
+**Important:** the MCP spec and SDK change quickly. Before writing any MCP code, read the current SDK README and examples (in `node_modules/@modelcontextprotocol/server` and the official docs; findings so far are in `apps/gateway/examples/README.md`) and follow the current APIs. Do not rely on memory for SDK class names or transport details.
 
 ## 4. Repo layout
 
