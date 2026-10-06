@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { validateUpstreamUrl } from '@/lib/upstream-url'
+import { cacheInvalidator } from '@/lib/redis'
 
 const SlugSchema = z
   .string()
@@ -69,7 +70,11 @@ export async function deleteProject(slug: string, confirmSlug: string) {
     return { error: 'Not found' }
   }
 
+  // Read the key hashes first: the delete cascades them away.
+  const keys = await db.apiKey.findMany({ where: { projectId: project.id }, select: { hash: true } })
   await db.project.delete({ where: { id: project.id } })
+  await cacheInvalidator.project(slug)
+  for (const { hash } of keys) await cacheInvalidator.apiKey(hash)
   revalidatePath('/projects')
   redirect('/projects')
 }
@@ -110,6 +115,7 @@ export async function updateProjectSettings(
   }
 
   const updated = await db.project.update({ where: { id: project.id }, data: changes })
+  await cacheInvalidator.project(slug)
 
   revalidatePath(`/projects/${slug}/settings`)
   revalidatePath(`/projects/${slug}/overview`)

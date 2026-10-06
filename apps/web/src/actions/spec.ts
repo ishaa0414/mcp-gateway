@@ -1,6 +1,7 @@
 'use server'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
+import { cacheInvalidator } from '@/lib/redis'
 import { revalidatePath } from 'next/cache'
 import { ssrfFetch } from '@mcp-gateway/shared'
 import { importSpec, type ImportResult } from '@/lib/spec-import'
@@ -20,6 +21,7 @@ async function requireProject(slug: string) {
 
 async function runImport(slug: string, projectId: string, specText: string, specUrl?: string): Promise<ImportResult> {
   const summary = await importSpec(db, { projectId, specText, specUrl })
+  await cacheInvalidator.project(slug)
 
   revalidatePath(`/projects/${slug}/overview`)
   revalidatePath(`/projects/${slug}/spec`)

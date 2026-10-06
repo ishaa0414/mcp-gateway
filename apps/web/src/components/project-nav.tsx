@@ -7,6 +7,7 @@ const tabs = [
   { label: 'Overview', href: (slug: string) => `/projects/${slug}/overview` },
   { label: 'Spec', href: (slug: string) => `/projects/${slug}/spec` },
   { label: 'Tools', href: (slug: string) => `/projects/${slug}/tools` },
+  { label: 'API Keys', href: (slug: string) => `/projects/${slug}/api-keys` },
   { label: 'Settings', href: (slug: string) => `/projects/${slug}/settings` },
 ]
 
