@@ -1,16 +1,13 @@
-import { config as loadEnv } from 'dotenv'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-loadEnv({ path: resolve(__dirname, '../../../.env') })
+// Must be first: loads the root .env and validates it before any module that
+// reads process.env at import time.
+import { env } from './env.js'
 
 import { Worker } from 'bullmq'
 import { Redis } from 'ioredis'
 
 const QUEUE_NAME = 'tool-call-logs'
 
-const connection = new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379', {
+const connection = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null, // Required by BullMQ
 })
 

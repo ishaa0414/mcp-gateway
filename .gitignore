@@ -51,3 +51,7 @@ desktop.ini
 
 # TypeScript
 *.tsbuildinfo
+
+# Written and re-added by `next dev` in apps/web
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

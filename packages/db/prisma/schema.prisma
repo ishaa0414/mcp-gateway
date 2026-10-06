@@ -124,17 +124,24 @@ model Tool {
   path        String
   name        String
   description String   @db.Text
+  // What the spec produced for name/description on the last import. A user edit
+  // is `name != specName`; re-import only overwrites a field that still matches.
+  specName        String @map("spec_name")
+  specDescription String @map("spec_description") @db.Text
   inputSchema Json     @map("input_schema")
-  enabled     Boolean  @default(true)
-  hiddenParams Json    @default("{}") @map("hidden_params")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  enabled     Boolean   @default(true)
+  hiddenParams Json     @default("{}") @map("hidden_params")
+  removedAt   DateTime? @map("removed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   toolCallLogs ToolCallLog[]
   usageRollups UsageRollup[]
 
   @@unique([projectId, operationId])
+  // MCP clients address tools by name, so a name must identify exactly one tool.
+  @@unique([projectId, name])
   @@map("tools")
 }
 
