@@ -1,100 +1,107 @@
-import type { ToolDefinition, MergeResult, MergedTool } from './types.js'
+import type { JsonSchema, MergeResult, ToolDefinition, ToolUpdate } from './types.js'
 
 export interface ExistingTool {
   operationId: string
+  method: string
+  path: string
   name: string
   description: string
+  /** What the spec produced for `name` on the last import. */
+  specName: string
+  /** What the spec produced for `description` on the last import. */
+  specDescription: string
   inputSchema: Record<string, unknown>
-  enabled: boolean
-  hiddenParams: Record<string, unknown>
   removedAt: Date | null
-  userEdited?: boolean
 }
 
 /**
- * Merge a freshly-extracted list of tools from a new spec import into the
- * existing tool list stored in the database.
+ * Structural equality that ignores object key order. Postgres JSONB does not
+ * preserve key order, so comparing JSON.stringify output reports every stored
+ * schema as "changed" after a round trip through the database.
+ */
+export function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => isDeepEqual(v, b[i]))
+  }
+
+  const ao = a as Record<string, unknown>
+  const bo = b as Record<string, unknown>
+  const aKeys = Object.keys(ao)
+  if (aKeys.length !== Object.keys(bo).length) return false
+  return aKeys.every((k) => Object.hasOwn(bo, k) && isDeepEqual(ao[k], bo[k]))
+}
+
+/**
+ * Compare the stored tools with a freshly extracted spec and work out the minimum
+ * set of writes.
  *
- * Rules:
- * - New operationIds → add with removedAt = null
- * - Matching operationIds:
- *   - Preserve user edits (name / description) if userEdited = true
- *   - Update inputSchema from fresh spec
- *   - Clear removedAt (operation re-appeared in spec)
- * - OperationIds in existing but NOT in fresh → set removedAt = now
+ * - New operationId           → create.
+ * - operationId still in spec → update only if a spec-derived field changed
+ *   (name, description, method, path, input schema, or it was previously removed).
+ *   A user edit is a field that differs from its spec baseline (`name != specName`);
+ *   edited fields keep the user's value and only the baseline moves.
+ * - operationId no longer in spec → markRemoved (soft delete; edits are kept).
+ *
+ * `enabled` and `hiddenParams` are user-owned and are never part of an update.
  */
 export function mergeTools(existing: ExistingTool[], fresh: ToolDefinition[]): MergeResult {
-  const freshMap = new Map(fresh.map((t) => [t.operationId, t]))
-  const existingMap = new Map(existing.map((t) => [t.operationId, t]))
+  const freshById = new Map(fresh.map((t) => [t.operationId, t]))
+  const existingIds = new Set(existing.map((t) => t.operationId))
 
-  const now = new Date()
-  const result: MergedTool[] = []
-  let added = 0, updated = 0, removed = 0, unchanged = 0
+  const update: ToolUpdate[] = []
+  const markRemoved: string[] = []
+  let unchanged = 0
 
-  // Process existing tools
   for (const ex of existing) {
-    const freshTool = freshMap.get(ex.operationId)
+    const f = freshById.get(ex.operationId)
 
-    if (!freshTool) {
-      if (ex.removedAt === null) {
-        removed++
-        result.push({
-          operationId: ex.operationId,
-          method: '',
-          path: '',
-          name: ex.name,
-          description: ex.description,
-          inputSchema: ex.inputSchema as import('./types.js').JsonSchema,
-          removedAt: now,
-          userEdited: ex.userEdited,
-        })
-      } else {
-        unchanged++
-        result.push({
-          operationId: ex.operationId,
-          method: '',
-          path: '',
-          name: ex.name,
-          description: ex.description,
-          inputSchema: ex.inputSchema as import('./types.js').JsonSchema,
-          removedAt: ex.removedAt,
-          userEdited: ex.userEdited,
-        })
-      }
-    } else {
-      const nameChanged = ex.name !== freshTool.name && !ex.userEdited
-      const descChanged = ex.description !== freshTool.description && !ex.userEdited
-      const schemaChanged =
-        JSON.stringify(ex.inputSchema) !== JSON.stringify(freshTool.inputSchema)
-      const wasRemoved = ex.removedAt !== null
-
-      if (nameChanged || descChanged || schemaChanged || wasRemoved) {
-        updated++
-      } else {
-        unchanged++
-      }
-
-      result.push({
-        operationId: freshTool.operationId,
-        method: freshTool.method,
-        path: freshTool.path,
-        name: ex.userEdited ? ex.name : freshTool.name,
-        description: ex.userEdited ? ex.description : freshTool.description,
-        inputSchema: freshTool.inputSchema,
-        removedAt: null,
-        userEdited: ex.userEdited,
-        serversUrl: freshTool.serversUrl,
-      })
+    if (!f) {
+      if (ex.removedAt === null) markRemoved.push(ex.operationId)
+      else unchanged++
+      continue
     }
+
+    const specChanged =
+      ex.specName !== f.name ||
+      ex.specDescription !== f.description ||
+      ex.method !== f.method ||
+      ex.path !== f.path ||
+      !isDeepEqual(ex.inputSchema, f.inputSchema) ||
+      ex.removedAt !== null
+
+    if (!specChanged) {
+      unchanged++
+      continue
+    }
+
+    const nameEdited = ex.name !== ex.specName
+    const descriptionEdited = ex.description !== ex.specDescription
+
+    update.push({
+      operationId: f.operationId,
+      method: f.method,
+      path: f.path,
+      name: nameEdited ? ex.name : f.name,
+      description: descriptionEdited ? ex.description : f.description,
+      specName: f.name,
+      specDescription: f.description,
+      inputSchema: f.inputSchema as JsonSchema,
+    })
   }
 
-  // Add brand-new operations
-  for (const ft of fresh) {
-    if (!existingMap.has(ft.operationId)) {
-      added++
-      result.push({ ...ft, removedAt: null })
-    }
-  }
+  const create = fresh.filter((t) => !existingIds.has(t.operationId))
 
-  return { tools: result, added, updated, removed, unchanged }
+  return {
+    create,
+    update,
+    markRemoved,
+    added: create.length,
+    updated: update.length,
+    removed: markRemoved.length,
+    unchanged,
+  }
 }

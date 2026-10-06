@@ -98,6 +98,35 @@ async function resolveAndValidate(hostname: string): Promise<{ ip: string; famil
   return { ip: address, family: family as 4 | 6 }
 }
 
+/**
+ * Check, without fetching, that a URL is absolute http(s), carries no
+ * credentials, and that its host resolves only to public addresses. Used when an
+ * upstream base URL is saved so a bad one is rejected up front rather than at call
+ * time. Uses the same resolver and blocklist as ssrfFetch.
+ */
+export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    throw new SsrfError('Must be an absolute URL such as https://api.example.com')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new SsrfError(`Unsupported protocol ${url.protocol} (use http or https)`)
+  }
+  if (url.username || url.password) {
+    throw new SsrfError('URL must not contain a username or password')
+  }
+
+  try {
+    await resolveAndValidate(url.hostname)
+  } catch (err) {
+    if (err instanceof SsrfError) throw err
+    throw new SsrfError(`Could not resolve host ${url.hostname}`)
+  }
+  return url
+}
+
 export interface SsrfFetchOptions {
   method?: string
   headers?: Record<string, string>

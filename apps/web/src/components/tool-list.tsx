@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Pencil } from 'lucide-react'
+import { validateToolName } from '@mcp-gateway/openapi-tools/tool-name'
 import type { Tool } from '@mcp-gateway/db'
 
 interface ToolListProps {
@@ -48,6 +49,7 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
   const [editError, setEditError] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const nameCheck = validateToolName(editName)
 
   function openEditor(tool: Tool) {
     setEditingTool(tool)
@@ -134,15 +136,27 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                   </p>
                 )}
                 <div className="space-y-1.5">
-                  <Label>Tool name</Label>
+                  <Label htmlFor="toolName">Tool name</Label>
                   <Input
+                    id="toolName"
                     value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="font-mono text-sm"
+                    onChange={(e) => {
+                      setEditName(e.target.value)
+                      setEditError(null)
+                    }}
+                    aria-invalid={!nameCheck.valid}
+                    aria-describedby="toolNameHelp"
+                    className={`font-mono text-sm ${nameCheck.valid ? '' : 'border-destructive focus-visible:ring-destructive'}`}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Must match <code>^[a-zA-Z0-9_-]&#123;1,64&#125;$</code>
-                  </p>
+                  {nameCheck.valid ? (
+                    <p id="toolNameHelp" className="text-xs text-muted-foreground">
+                      Letters, numbers, underscores and hyphens only, up to 64 characters.
+                    </p>
+                  ) : (
+                    <p id="toolNameHelp" role="alert" className="text-xs text-destructive">
+                      {nameCheck.error}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Description</Label>
@@ -156,7 +170,7 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                   <Button variant="outline" onClick={() => setEditingTool(null)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleSave} disabled={isPending}>
+                  <Button onClick={handleSave} disabled={isPending || !nameCheck.valid}>
                     {isPending ? 'Saving…' : 'Save'}
                   </Button>
                 </div>

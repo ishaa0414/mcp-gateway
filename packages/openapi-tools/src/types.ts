@@ -5,7 +5,6 @@ export interface ToolDefinition {
   name: string        // MCP-safe: ^[a-zA-Z0-9_-]{1,64}$
   description: string
   inputSchema: JsonSchema
-  serversUrl?: string // from spec.servers[0].url on first import
 }
 
 export interface JsonSchema {
@@ -16,16 +15,23 @@ export interface JsonSchema {
   [key: string]: unknown
 }
 
+/** Fields written to an existing tool row when its spec-derived data changed. */
+export interface ToolUpdate extends ToolDefinition {
+  /** What the spec produced for name/description; the baseline for detecting user edits. */
+  specName: string
+  specDescription: string
+}
+
 export interface MergeResult {
-  tools: MergedTool[]
+  /** Operations that are new in the spec. */
+  create: ToolDefinition[]
+  /** Existing tools whose spec-derived fields changed. Unchanged tools are omitted. */
+  update: ToolUpdate[]
+  /** operationIds that were active and are no longer in the spec. */
+  markRemoved: string[]
   added: number
   updated: number
   removed: number
+  /** Present in both and nothing spec-derived changed (includes already-removed tools). */
   unchanged: number
-}
-
-export interface MergedTool extends ToolDefinition {
-  removedAt: Date | null
-  /** true when user has customised name/description — preserve those edits */
-  userEdited?: boolean
 }

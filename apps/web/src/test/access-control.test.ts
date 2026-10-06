@@ -56,6 +56,8 @@ beforeAll(async () => {
       path: '/pets/{id}',
       name: 'getPet',
       description: 'Get a pet',
+      specName: 'getPet',
+      specDescription: 'Get a pet',
       inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
     },
   })

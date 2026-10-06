@@ -1,7 +1,5 @@
 import type { ToolDefinition, JsonSchema } from './types.js'
 
-const MCP_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/
-
 /** Sanitise a raw string into a valid MCP tool name. */
 export function sanitizeName(raw: string): string {
   let name = raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^[^a-zA-Z_]+/, '')
@@ -99,15 +97,9 @@ function extractBodyParams(requestBody: any): ParamEntry[] {
   }]
 }
 
-/**
- * Extract one ToolDefinition per operation from a dereferenced OpenAPI 3.x document.
- * The first tool's `serversUrl` is populated from spec.servers[0].url when present.
- */
+/** Extract one ToolDefinition per operation from a dereferenced OpenAPI 3.x document. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function extractTools(doc: Record<string, any>): ToolDefinition[] {
-  const servers = doc['servers'] as Array<{ url: string }> | undefined
-  const serversUrl = servers?.[0]?.url
-
   const paths = doc['paths'] as Record<string, unknown> | undefined
   if (!paths) return []
 
@@ -171,10 +163,6 @@ export function extractTools(doc: Record<string, any>): ToolDefinition[] {
         inputSchema,
       }
 
-      if (tools.length === 0 && serversUrl) {
-        tool.serversUrl = serversUrl
-      }
-
       tools.push(tool)
     }
   }
@@ -182,10 +170,3 @@ export function extractTools(doc: Record<string, any>): ToolDefinition[] {
   return tools
 }
 
-/** Validate that a proposed tool name matches MCP constraints. */
-export function validateToolName(name: string): { valid: boolean; error?: string } {
-  if (!MCP_NAME_RE.test(name)) {
-    return { valid: false, error: 'Tool name must match ^[a-zA-Z0-9_-]{1,64}$' }
-  }
-  return { valid: true }
-}

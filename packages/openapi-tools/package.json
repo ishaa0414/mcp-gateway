@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./tool-name": {
+      "import": "./dist/tool-name.js",
+      "types": "./dist/tool-name.d.ts"
     }
   },
   "main": "./dist/index.js",

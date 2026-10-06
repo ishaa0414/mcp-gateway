@@ -8,14 +8,22 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import Link from 'next/link'
 import { Upload, Globe, CheckCircle, AlertCircle } from 'lucide-react'
+import type { BaseUrlOutcome, ImportResult } from '@/lib/spec-import'
 
-interface ImportResult {
-  error?: string
-  added?: number
-  updated?: number
-  removed?: number
-  total?: number
+function baseUrlMessage(outcome: BaseUrlOutcome): string | null {
+  switch (outcome.status) {
+    case 'kept':
+      return null
+    case 'set':
+      return `Upstream base URL set to ${outcome.url}.`
+    case 'unset':
+      if (outcome.reason === 'relative')
+        return 'This spec declares a relative server URL, so no upstream base URL was set.'
+      if (outcome.reason === 'none') return 'This spec declares no servers, so no upstream base URL was set.'
+      return `The spec's server URL was not used (${outcome.detail ?? 'rejected'}).`
+  }
 }
 
 export default function SpecPage() {
@@ -53,26 +61,39 @@ export default function SpecPage() {
       {result && (
         <div
           className={`flex items-start gap-3 rounded-lg border p-4 ${
-            result.error ? 'border-destructive/50 bg-destructive/5' : 'border-green-500/50 bg-green-500/5'
+            'error' in result ? 'border-destructive/50 bg-destructive/5' : 'border-green-500/50 bg-green-500/5'
           }`}
         >
-          {result.error ? (
+          {'error' in result ? (
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           ) : (
             <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
           )}
           <div className="text-sm">
-            {result.error ? (
+            {'error' in result ? (
               <p className="text-destructive">{result.error}</p>
             ) : (
               <>
                 <p className="font-medium text-green-700 dark:text-green-400">Import successful</p>
-                <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
+                <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <Badge variant="secondary">{result.added} added</Badge>
                   <Badge variant="secondary">{result.updated} updated</Badge>
                   <Badge variant="secondary">{result.removed} removed</Badge>
+                  <Badge variant="secondary">{result.unchanged} unchanged</Badge>
                   <Badge variant="secondary">{result.total} total</Badge>
                 </div>
+                {baseUrlMessage(result.baseUrl) && (
+                  <p className="mt-2 text-xs text-muted-foreground">{baseUrlMessage(result.baseUrl)}</p>
+                )}
+                {result.baseUrl.status === 'unset' && (
+                  <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    Set the upstream base URL in{' '}
+                    <Link href={`/projects/${slug}/settings`} className="underline underline-offset-2">
+                      Settings
+                    </Link>{' '}
+                    before connecting an agent.
+                  </p>
+                )}
               </>
             )}
           </div>

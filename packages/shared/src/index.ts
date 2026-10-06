@@ -14,7 +14,7 @@ export const PaginationSchema = z.object({
 
 export type Pagination = z.infer<typeof PaginationSchema>
 
-export { ssrfFetch, SsrfError, isBlockedIpv4, isBlockedIpv6 } from './ssrf-fetch.js'
+export { ssrfFetch, assertPublicHttpUrl, SsrfError, isBlockedIpv4, isBlockedIpv6 } from './ssrf-fetch.js'
 export type { SsrfFetchOptions, SsrfResponse } from './ssrf-fetch.js'
 
 export { validateEnv, EnvValidationError } from './env.js'

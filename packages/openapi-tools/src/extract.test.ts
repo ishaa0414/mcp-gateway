@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSpec } from './parse.js'
-import { extractTools, sanitizeName, validateToolName } from './extract.js'
+import { extractTools, sanitizeName } from './extract.js'
+import { validateToolName } from './tool-name.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const fixtures = join(__dirname, '__fixtures__')
@@ -45,8 +46,22 @@ describe('validateToolName', () => {
     expect(validateToolName('a').valid).toBe(true)
   })
 
-  it('rejects names with spaces', () => {
-    expect(validateToolName('list pets').valid).toBe(false)
+  it('rejects names with spaces and says why', () => {
+    const res = validateToolName('find my pet')
+    expect(res.valid).toBe(false)
+    expect(res.error).toContain('spaces')
+    expect(res.error).toContain('letters, numbers, underscores and hyphens')
+  })
+
+  it('names every offending character once', () => {
+    const res = validateToolName('a.b.c/d')
+    expect(res.error).toContain('"."')
+    expect(res.error).toContain('"/"')
+    expect(res.error?.match(/"\."/g)).toHaveLength(1)
+  })
+
+  it('explains the length limit', () => {
+    expect(validateToolName('a'.repeat(65)).error).toContain('65 characters')
   })
 
   it('rejects empty string', () => {
@@ -89,13 +104,6 @@ describe('extractTools (petstore)', () => {
     expect(list).toBeDefined()
     expect(list!.method).toBe('GET')
     expect(list!.path).toBe('/pets')
-  })
-
-  it('sets serversUrl on the first tool', async () => {
-    const doc = await loadFixture('petstore.json')
-    const tools = extractTools(doc)
-    expect(tools[0]?.serversUrl).toBe('https://petstore.example.com/v1')
-    expect(tools[1]?.serversUrl).toBeUndefined()
   })
 
   it('includes requestBody parameters in inputSchema', async () => {
