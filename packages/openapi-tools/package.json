@@ -11,6 +11,10 @@
     "./tool-name": {
       "import": "./dist/tool-name.js",
       "types": "./dist/tool-name.d.ts"
+    },
+    "./agent-schema": {
+      "import": "./dist/agent-schema.js",
+      "types": "./dist/agent-schema.d.ts"
     }
   },
   "main": "./dist/index.js",
