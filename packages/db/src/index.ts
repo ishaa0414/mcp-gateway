@@ -19,19 +19,21 @@ declare global {
   var __prisma: PrismaClient | undefined
 }
 
+// One client per process in every environment. globalThis (not a module variable)
+// so dev hot reloads reuse it. Creating one per access starts a transaction on one
+// client and runs its queries on another ("Transaction not found") and leaks a
+// connection pool per call.
 function getClient(): PrismaClient {
-  if (process.env['NODE_ENV'] === 'production') {
-    return createPrismaClient()
-  }
   return (globalThis.__prisma ??= createPrismaClient())
 }
 
-// Lazy proxy: defers PrismaClient creation to first method call.
-// This allows the module to be imported during next build without DATABASE_URL.
+// Lazy proxy: defers PrismaClient creation to first use, so the module can be
+// imported during `next build` without DATABASE_URL.
 export const db: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getClient() as any)[prop]
+    const client = getClient()
+    const value = Reflect.get(client, prop, client)
+    return typeof value === 'function' ? value.bind(client) : value
   },
 })
 
