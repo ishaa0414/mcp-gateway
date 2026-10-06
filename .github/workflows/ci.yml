@@ -40,7 +40,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mcpgateway
       DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/mcpgateway_test
       REDIS_URL: redis://localhost:6379
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      # Quoted: unquoted, YAML parses this as the integer 0.
+      ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
       NODE_ENV: test
       AUTH_SECRET: ci-only-not-a-real-secret-0000000000000000
       AUTH_URL: http://localhost:3000
