@@ -2,46 +2,58 @@
 // reads process.env at import time (e.g. @mcp-gateway/db).
 import { env } from './env.js'
 
-import Fastify from 'fastify'
-import cors from '@fastify/cors'
 import { db } from '@mcp-gateway/db'
 import { Redis } from 'ioredis'
+import { buildApp } from './app.js'
 
-const fastify = Fastify({ logger: true })
-
-await fastify.register(cors, { origin: true })
-
+// Fail fast on Redis problems: a cache miss is cheaper than a request that waits.
 const redis = new Redis(env.REDIS_URL, {
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: 1,
+  connectTimeout: 2_000,
+  commandTimeout: 1_000,
+  enableOfflineQueue: false,
   lazyConnect: true,
 })
+redis.on('error', () => undefined) // reported by the cache wrapper and /health; do not crash on it
 
-fastify.get('/health', async (_req, reply) => {
-  const status: Record<string, string> = {}
-
-  try {
-    await db.$queryRaw`SELECT 1`
-    status['postgres'] = 'ok'
-  } catch (err) {
-    fastify.log.error(err, 'Postgres health check failed')
-    status['postgres'] = 'error'
-  }
-
-  try {
-    const pong = await redis.ping()
-    status['redis'] = pong === 'PONG' ? 'ok' : 'error'
-  } catch (err) {
-    fastify.log.error(err, 'Redis health check failed')
-    status['redis'] = 'error'
-  }
-
-  const allOk = Object.values(status).every((v) => v === 'ok')
-  return reply.status(allOk ? 200 : 503).send(status)
+const app = await buildApp({
+  db,
+  redis,
+  config: {
+    encryptionKey: env.ENCRYPTION_KEY,
+    toolTimeoutMs: env.TOOL_CALL_TIMEOUT_MS,
+    toolMaxResponseBytes: env.TOOL_RESPONSE_MAX_BYTES,
+    configCacheTtlSeconds: env.CONFIG_CACHE_TTL_SECONDS,
+    apiKeyCacheTtlSeconds: env.API_KEY_CACHE_TTL_SECONDS,
+    lastUsedIntervalMs: 5 * 60 * 1000,
+  },
 })
 
+redis.connect().catch((err: unknown) => {
+  app.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'could not connect to Redis yet; serving from Postgres')
+})
+
+// Containers are stopped with SIGTERM: finish in-flight requests, then release connections.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    app.log.info({ signal }, 'shutting down')
+    app
+      .close()
+      .then(async () => {
+        redis.disconnect()
+        await db.$disconnect()
+        process.exit(0)
+      })
+      .catch((err: unknown) => {
+        app.log.error(err, 'error during shutdown')
+        process.exit(1)
+      })
+  })
+}
+
 try {
-  await fastify.listen({ port: env.GATEWAY_PORT, host: '0.0.0.0' })
+  await app.listen({ port: env.port, host: '0.0.0.0' })
 } catch (err) {
-  fastify.log.error(err)
+  app.log.error(err)
   process.exit(1)
 }

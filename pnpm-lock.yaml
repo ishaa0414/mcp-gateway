@@ -193,9 +193,15 @@ importers:
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0
+      '@mcp-gateway/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@mcp-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@mcp-gateway/openapi-tools':
+        specifier: workspace:*
+        version: link:../../packages/openapi-tools
       '@mcp-gateway/shared':
         specifier: workspace:*
         version: link:../../packages/shared

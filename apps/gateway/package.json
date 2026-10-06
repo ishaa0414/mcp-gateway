@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
+    "@mcp-gateway/crypto": "workspace:*",
     "@mcp-gateway/db": "workspace:*",
+    "@mcp-gateway/openapi-tools": "workspace:*",
     "@mcp-gateway/shared": "workspace:*",
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.1",

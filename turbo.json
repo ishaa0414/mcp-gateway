@@ -5,19 +5,37 @@
       "cache": false
     },
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "src/generated/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "src/generated/**"
+      ]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "test": {
-      "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "REDIS_URL", "ENCRYPTION_KEY"]
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_TEST",
+        "REDIS_URL",
+        "REDIS_URL_TEST",
+        "ENCRYPTION_KEY"
+      ]
     },
     "dev": {
       "persistent": true,
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     },
     "lint": {}
