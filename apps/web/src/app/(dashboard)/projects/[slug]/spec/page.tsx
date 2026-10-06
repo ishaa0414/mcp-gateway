@@ -82,6 +82,23 @@ export default function SpecPage() {
                   <Badge variant="secondary">{result.unchanged} unchanged</Badge>
                   <Badge variant="secondary">{result.total} total</Badge>
                 </div>
+                {result.collisions.length > 0 && (
+                  <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                    <p className="font-medium">
+                      {result.collisions.length === 1
+                        ? '1 tool was renamed to avoid a name clash:'
+                        : `${result.collisions.length} tools were renamed to avoid name clashes:`}
+                    </p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {result.collisions.map((c) => (
+                        <li key={c.operationId}>
+                          <code>{c.wanted}</code> is already used by another tool, so this one is{' '}
+                          <code>{c.assigned}</code>. Rename it in Tools if you prefer.
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {baseUrlMessage(result.baseUrl) && (
                   <p className="mt-2 text-xs text-muted-foreground">{baseUrlMessage(result.baseUrl)}</p>
                 )}

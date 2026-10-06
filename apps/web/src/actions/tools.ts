@@ -2,7 +2,7 @@
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
-import { validateToolName } from '@mcp-gateway/openapi-tools'
+import { toolNameTakenMessage, validateToolName } from '@mcp-gateway/openapi-tools'
 
 
 async function requireToolOwner(toolId: string) {
@@ -38,19 +38,19 @@ export async function updateTool(
     description?: string
     hiddenParams?: Record<string, { value: unknown; required?: boolean }>
   }
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; field?: 'name' }> {
   try {
     const tool = await requireToolOwner(toolId)
 
     if (data.name !== undefined) {
       const validation = validateToolName(data.name)
-      if (!validation.valid) return { error: validation.error }
+      if (!validation.valid) return { error: validation.error, field: 'name' }
 
       // Ensure unique within project
       const conflict = await db.tool.findFirst({
         where: { projectId: tool.projectId, name: data.name, id: { not: toolId } },
       })
-      if (conflict) return { error: 'Tool name already used in this project' }
+      if (conflict) return { error: toolNameTakenMessage(data.name), field: 'name' }
     }
 
     // Validate hidden params: required params must have a fixed value
@@ -81,6 +81,10 @@ export async function updateTool(
     revalidatePath(`/projects/${tool.project.slug}/tools`)
     return {}
   } catch (e: unknown) {
+    // Lost a race with another rename: the unique (project, name) index has the final word.
+    if (data.name !== undefined && typeof e === 'object' && e !== null && 'code' in e && e.code === 'P2002') {
+      return { error: toolNameTakenMessage(data.name), field: 'name' }
+    }
     return { error: e instanceof Error ? e.message : 'Failed' }
   }
 }

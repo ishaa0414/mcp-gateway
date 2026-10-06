@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Pencil } from 'lucide-react'
-import { validateToolName } from '@mcp-gateway/openapi-tools/tool-name'
+import { toolNameTakenMessage, validateToolName } from '@mcp-gateway/openapi-tools/tool-name'
 import type { Tool } from '@mcp-gateway/db'
 
 interface ToolListProps {
@@ -46,10 +46,20 @@ function getAgentSchema(
 export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
   const [editingTool, setEditingTool] = useState<Tool | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [editError, setEditError] = useState<string | null>(null)
+  const [editError, setEditError] = useState<{ message: string; field?: 'name' } | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const nameCheck = validateToolName(editName)
+  // Removed tools count too: they keep their name in the database.
+  const nameTaken =
+    editingTool !== null && tools.some((t) => t.id !== editingTool.id && t.name === editName)
+  const nameError = !nameCheck.valid
+    ? nameCheck.error
+    : nameTaken
+      ? toolNameTakenMessage(editName)
+      : editError?.field === 'name'
+        ? editError.message
+        : undefined
 
   function openEditor(tool: Tool) {
     setEditingTool(tool)
@@ -72,7 +82,7 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
         description: editDescription,
       })
       if (res.error) {
-        setEditError(res.error)
+        setEditError({ message: res.error, field: res.field })
       } else {
         setEditingTool(null)
       }
@@ -130,9 +140,9 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4 pt-2">
-                {editError && (
-                  <p className="rounded bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {editError}
+                {editError && editError.field !== 'name' && (
+                  <p role="alert" className="rounded bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {editError.message}
                   </p>
                 )}
                 <div className="space-y-1.5">
@@ -144,17 +154,17 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                       setEditName(e.target.value)
                       setEditError(null)
                     }}
-                    aria-invalid={!nameCheck.valid}
+                    aria-invalid={nameError !== undefined}
                     aria-describedby="toolNameHelp"
-                    className={`font-mono text-sm ${nameCheck.valid ? '' : 'border-destructive focus-visible:ring-destructive'}`}
+                    className={`font-mono text-sm ${nameError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                   />
-                  {nameCheck.valid ? (
-                    <p id="toolNameHelp" className="text-xs text-muted-foreground">
-                      Letters, numbers, underscores and hyphens only, up to 64 characters.
+                  {nameError ? (
+                    <p id="toolNameHelp" role="alert" className="text-xs text-destructive">
+                      {nameError}
                     </p>
                   ) : (
-                    <p id="toolNameHelp" role="alert" className="text-xs text-destructive">
-                      {nameCheck.error}
+                    <p id="toolNameHelp" className="text-xs text-muted-foreground">
+                      Letters, numbers, underscores and hyphens only, up to 64 characters.
                     </p>
                   )}
                 </div>
@@ -170,7 +180,7 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                   <Button variant="outline" onClick={() => setEditingTool(null)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleSave} disabled={isPending || !nameCheck.valid}>
+                  <Button onClick={handleSave} disabled={isPending || nameError !== undefined}>
                     {isPending ? 'Saving…' : 'Save'}
                   </Button>
                 </div>

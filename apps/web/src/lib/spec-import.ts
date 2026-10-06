@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { PrismaClient } from '@mcp-gateway/db'
 import { extractTools, mergeTools, parseSpec, resolveBaseUrl } from '@mcp-gateway/openapi-tools'
-import type { ExistingTool } from '@mcp-gateway/openapi-tools'
+import type { ExistingTool, NameCollision } from '@mcp-gateway/openapi-tools'
 import { isAbsoluteHttpUrl, validateUpstreamUrl } from '@/lib/upstream-url'
 
 /** What happened to the project's upstream base URL during an import. */
@@ -17,6 +17,8 @@ export interface ImportSummary {
   unchanged: number
   /** Active operations in the imported spec. */
   total: number
+  /** Spec names that were already taken by another tool, so the tool got a suffixed name. */
+  collisions: NameCollision[]
   baseUrl: BaseUrlOutcome
 }
 
@@ -79,7 +81,7 @@ export async function importSpec(db: PrismaClient, input: ImportInput): Promise<
     inputSchema: t.inputSchema as Record<string, unknown>,
     removedAt: t.removedAt,
   }))
-  const idByOperation = new Map(rows.map((r) => [r.operationId, r.id]))
+  const rowsByOperation = new Map(rows.map((r) => [r.operationId, r]))
 
   const merge = mergeTools(existing, fresh)
 
@@ -94,25 +96,19 @@ export async function importSpec(db: PrismaClient, input: ImportInput): Promise<
       },
     })
 
-    if (merge.create.length > 0) {
-      await tx.tool.createMany({
-        data: merge.create.map((t) => ({
-          projectId,
-          operationId: t.operationId,
-          method: t.method,
-          path: t.path,
-          name: t.name,
-          description: t.description,
-          specName: t.name,
-          specDescription: t.description,
-          inputSchema: t.inputSchema as object,
-        })),
-      })
+    // The unique (project, name) index is checked per statement, so tools that swap
+    // or hand over names would clash mid-way. Park every tool whose name changes on a
+    // placeholder first, then write the final values.
+    const renamed = merge.update
+      .map((u) => ({ u, row: rowsByOperation.get(u.operationId)! }))
+      .filter(({ u, row }) => u.name !== row.name)
+    for (const { row } of renamed) {
+      await tx.tool.update({ where: { id: row.id }, data: { name: `~${row.id}` } })
     }
 
     for (const u of merge.update) {
       await tx.tool.update({
-        where: { id: idByOperation.get(u.operationId)! },
+        where: { id: rowsByOperation.get(u.operationId)!.id },
         data: {
           method: u.method,
           path: u.path,
@@ -123,6 +119,22 @@ export async function importSpec(db: PrismaClient, input: ImportInput): Promise<
           inputSchema: u.inputSchema as object,
           removedAt: null,
         },
+      })
+    }
+
+    if (merge.create.length > 0) {
+      await tx.tool.createMany({
+        data: merge.create.map((t) => ({
+          projectId,
+          operationId: t.operationId,
+          method: t.method,
+          path: t.path,
+          name: t.name,
+          description: t.description,
+          specName: t.specName,
+          specDescription: t.specDescription,
+          inputSchema: t.inputSchema as object,
+        })),
       })
     }
 
@@ -140,6 +152,7 @@ export async function importSpec(db: PrismaClient, input: ImportInput): Promise<
     removed: merge.removed,
     unchanged: merge.unchanged,
     total: fresh.length,
+    collisions: merge.collisions,
     baseUrl,
   }
 }

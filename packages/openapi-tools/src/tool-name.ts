@@ -24,3 +24,8 @@ export function validateToolName(name: string): { valid: boolean; error?: string
   }
   return { valid: true }
 }
+
+/** Shown by both the live check in the editor and the server, so they cannot drift apart. */
+export function toolNameTakenMessage(name: string): string {
+  return `Another tool in this project is already named "${name}". Tool names must be unique.`
+}

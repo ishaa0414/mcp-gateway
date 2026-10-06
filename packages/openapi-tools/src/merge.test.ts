@@ -166,3 +166,104 @@ describe('mergeTools: spec changes', () => {
     expect(result).toMatchObject({ added: 1, updated: 1, removed: 1, unchanged: 1 })
   })
 })
+
+describe('mergeTools: name collisions', () => {
+  // A tool the user renamed from getPetById to find_pet.
+  const userRenamed = () =>
+    makeExisting({ operationId: 'getPetById', path: '/pet/{id}', name: 'find_pet', specName: 'getPetById' })
+  const specFor = (...ops: Array<Partial<ToolDefinition>>) => ops.map((o) => makeFresh(o))
+  const petFresh = { operationId: 'getPetById', path: '/pet/{id}', name: 'getPetById' }
+
+  it('keeps the user name and suffixes a new tool that wants it', () => {
+    const fresh = specFor(petFresh, { operationId: 'findPet', path: '/find', name: 'find_pet' })
+
+    const result = mergeTools([userRenamed()], fresh)
+
+    expect(result.create).toHaveLength(1)
+    expect(result.create[0]).toMatchObject({ name: 'find_pet_2', specName: 'find_pet' })
+    expect(result.collisions).toEqual([{ operationId: 'findPet', wanted: 'find_pet', assigned: 'find_pet_2' }])
+    expect(result.update).toEqual([]) // the user's tool is not touched
+  })
+
+  it('gives the user the name even when the new operation comes first in the spec', () => {
+    const fresh = specFor({ operationId: 'findPet', path: '/find', name: 'find_pet' }, petFresh)
+    const result = mergeTools([userRenamed()], fresh)
+    expect(result.create[0]?.name).toBe('find_pet_2')
+  })
+
+  it('walks past suffixes that are also taken', () => {
+    const existing = [
+      makeExisting({ operationId: 'a', name: 'x', specName: 'a' }),
+      makeExisting({ operationId: 'b', name: 'x_2', specName: 'b' }),
+    ]
+    const fresh = specFor(
+      { operationId: 'a', name: 'a' },
+      { operationId: 'b', name: 'b' },
+      { operationId: 'c', name: 'x' }
+    )
+    expect(mergeTools(existing, fresh).create[0]?.name).toBe('x_3')
+  })
+
+  it('keeps a suffixed name within 64 characters', () => {
+    const long = 'n'.repeat(64)
+    const existing = [makeExisting({ operationId: 'a', name: long, specName: 'a' })]
+    const fresh = specFor({ operationId: 'a', name: 'a' }, { operationId: 'b', name: long })
+
+    const assigned = mergeTools(existing, fresh).create[0]!.name
+
+    expect(assigned).toHaveLength(64)
+    expect(assigned.endsWith('_2')).toBe(true)
+    expect(assigned).not.toBe(long)
+  })
+
+  it('suffixes an existing, unedited tool whose spec name moved onto a taken name', () => {
+    const existing = [
+      userRenamed(),
+      makeExisting({ operationId: 'findPet', path: '/find', name: 'findPet', specName: 'findPet' }),
+    ]
+    const fresh = specFor(petFresh, { operationId: 'findPet', path: '/find', name: 'find_pet' })
+
+    const result = mergeTools(existing, fresh)
+
+    expect(result.update).toHaveLength(1)
+    expect(result.update[0]).toMatchObject({ operationId: 'findPet', name: 'find_pet_2', specName: 'find_pet' })
+    expect(result.collisions).toHaveLength(1)
+  })
+
+  it('lets two unedited tools swap spec names without a collision', () => {
+    const existing = [
+      makeExisting({ operationId: 'a', name: 'x', specName: 'x' }),
+      makeExisting({ operationId: 'b', name: 'y', specName: 'y' }),
+    ]
+    const fresh = specFor({ operationId: 'a', name: 'y' }, { operationId: 'b', name: 'x' })
+
+    const result = mergeTools(existing, fresh)
+
+    expect(result.collisions).toEqual([])
+    expect(Object.fromEntries(result.update.map((u) => [u.operationId, u.name]))).toEqual({ a: 'y', b: 'x' })
+  })
+
+  it('treats the name of a removed tool as taken', () => {
+    const existing = [makeExisting({ operationId: 'gone', name: 'listPets', specName: 'listPets', removedAt: new Date() })]
+    const result = mergeTools(existing, specFor({ operationId: 'other', name: 'listPets' }))
+    expect(result.create[0]?.name).toBe('listPets_2')
+  })
+
+  it('reports nothing when names do not clash', () => {
+    const result = mergeTools([makeExisting()], specFor({}, { operationId: 'other', name: 'other' }))
+    expect(result.collisions).toEqual([])
+  })
+
+  it('is stable: re-importing after a collision changes nothing', () => {
+    // State after the first import above: user owns find_pet, the new tool holds find_pet_2.
+    const existing = [
+      userRenamed(),
+      makeExisting({ operationId: 'findPet', path: '/find', name: 'find_pet_2', specName: 'find_pet' }),
+    ]
+    const fresh = specFor(petFresh, { operationId: 'findPet', path: '/find', name: 'find_pet' })
+
+    const result = mergeTools(existing, fresh)
+
+    expect(result).toMatchObject({ added: 0, updated: 0, removed: 0, unchanged: 2, collisions: [] })
+  })
+})

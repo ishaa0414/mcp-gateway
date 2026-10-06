@@ -140,6 +140,8 @@ model Tool {
   usageRollups UsageRollup[]
 
   @@unique([projectId, operationId])
+  // MCP clients address tools by name, so a name must identify exactly one tool.
+  @@unique([projectId, name])
   @@map("tools")
 }
 

@@ -15,20 +15,31 @@ export interface JsonSchema {
   [key: string]: unknown
 }
 
-/** Fields written to an existing tool row when its spec-derived data changed. */
-export interface ToolUpdate extends ToolDefinition {
+/** A tool row to write: the extracted definition plus the spec baseline for name/description. */
+export interface ToolWrite extends ToolDefinition {
   /** What the spec produced for name/description; the baseline for detecting user edits. */
   specName: string
   specDescription: string
 }
 
+/** A spec-derived name that was already taken, so the tool was given a suffixed one. */
+export interface NameCollision {
+  operationId: string
+  /** The name the spec asked for. */
+  wanted: string
+  /** The unique name the tool received instead. */
+  assigned: string
+}
+
 export interface MergeResult {
   /** Operations that are new in the spec. */
-  create: ToolDefinition[]
+  create: ToolWrite[]
   /** Existing tools whose spec-derived fields changed. Unchanged tools are omitted. */
-  update: ToolUpdate[]
+  update: ToolWrite[]
   /** operationIds that were active and are no longer in the spec. */
   markRemoved: string[]
+  /** Tools whose spec-derived name clashed with another tool's name and got a suffix. */
+  collisions: NameCollision[]
   added: number
   updated: number
   removed: number

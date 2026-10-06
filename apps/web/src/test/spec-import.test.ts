@@ -266,3 +266,128 @@ describe('upstream base URL on import', () => {
     expect(summary.baseUrl).toEqual({ status: 'set', url: `https://${PUBLIC_HOST}/v1` })
   })
 })
+
+describe('tool name collisions', () => {
+  const findOp = (operationId: string, path = '/find') => ({
+    get: { operationId, summary: 'Find something', responses: { '200': { description: 'ok' } } },
+    path,
+  })
+
+  /** The default spec plus extra operations, keyed by path. */
+  function specWith(extra: Record<string, unknown>) {
+    return makeSpec({ ops: { ...JSON.parse(makeSpec()).paths, ...extra } })
+  }
+
+  const namesOf = async (projectId: string) =>
+    (await db.tool.findMany({ where: { projectId }, orderBy: { name: 'asc' } })).map((t) => t.name)
+
+  it("keeps the user's name and suffixes a new operation that wants it", async () => {
+    const p = await newProject()
+    await importSpec(db, { projectId: p.id, specText: makeSpec() })
+    const pet = await toolByOp(p.id, 'getPetById')
+    await db.tool.update({ where: { id: pet.id }, data: { name: 'find_pet' } })
+
+    const summary = await importSpec(db, {
+      projectId: p.id,
+      specText: specWith({ '/find': { get: findOp('find_pet').get } }),
+    })
+
+    expect(summary.added).toBe(1)
+    expect(summary.collisions).toEqual([{ operationId: 'find_pet', wanted: 'find_pet', assigned: 'find_pet_2' }])
+    expect((await toolByOp(p.id, 'getPetById')).name).toBe('find_pet')
+    expect(await toolByOp(p.id, 'find_pet')).toMatchObject({ name: 'find_pet_2', specName: 'find_pet' })
+  })
+
+  it('is stable on the next re-import: nothing updated, no collision reported, no crash', async () => {
+    const p = await newProject()
+    await importSpec(db, { projectId: p.id, specText: makeSpec() })
+    const pet = await toolByOp(p.id, 'getPetById')
+    await db.tool.update({ where: { id: pet.id }, data: { name: 'find_pet' } })
+    const v2 = specWith({ '/find': { get: findOp('find_pet').get } })
+    await importSpec(db, { projectId: p.id, specText: v2 })
+    const before = await namesOf(p.id)
+
+    const again = await importSpec(db, { projectId: p.id, specText: v2 })
+
+    expect(again).toMatchObject({ added: 0, updated: 0, removed: 0, unchanged: 5, collisions: [] })
+    expect(await namesOf(p.id)).toEqual(before)
+  })
+
+  it("never reuses the name of a removed tool", async () => {
+    const p = await newProject()
+    const v1 = makeSpec({ ops: { '/a': { get: findOp('get_pet').get } } })
+    await importSpec(db, { projectId: p.id, specText: v1 })
+
+    // get_pet disappears and a different operation sanitises to the same name.
+    const v2 = makeSpec({ ops: { '/b': { get: findOp('get.pet').get } } })
+    const summary = await importSpec(db, { projectId: p.id, specText: v2 })
+
+    expect(summary).toMatchObject({ added: 1, removed: 1 })
+    expect(summary.collisions).toEqual([{ operationId: 'get.pet', wanted: 'get_pet', assigned: 'get_pet_2' }])
+    expect(await toolByOp(p.id, 'get_pet')).toMatchObject({ name: 'get_pet' })
+    expect((await toolByOp(p.id, 'get_pet')).removedAt).not.toBeNull()
+  })
+
+  it('keeps every name in the project unique after a collision import', async () => {
+    const p = await newProject()
+    await importSpec(db, { projectId: p.id, specText: makeSpec() })
+    for (const op of ['listPets', 'addPet']) {
+      const t = await toolByOp(p.id, op)
+      await db.tool.update({ where: { id: t.id }, data: { name: `mine_${op}` } })
+    }
+    await importSpec(db, {
+      projectId: p.id,
+      specText: specWith({
+        '/x': { get: findOp('mine_listPets').get },
+        '/y': { get: findOp('mine_addPet').get },
+      }),
+    })
+
+    const names = await namesOf(p.id)
+    expect(new Set(names).size).toBe(names.length)
+    expect(names).toEqual(expect.arrayContaining(['mine_listPets', 'mine_listPets_2', 'mine_addPet', 'mine_addPet_2']))
+  })
+})
+
+describe('database enforces unique tool names per project', () => {
+  const tool = (projectId: string, operationId: string, name: string) => ({
+    projectId,
+    operationId,
+    method: 'GET',
+    path: `/${operationId}`,
+    name,
+    description: 'd',
+    specName: name,
+    specDescription: 'd',
+    inputSchema: { type: 'object' },
+  })
+
+  it('rejects a second tool with the same name in one project', async () => {
+    const p = await newProject()
+    await db.tool.create({ data: tool(p.id, 'one', 'dup_name') })
+
+    await expect(db.tool.create({ data: tool(p.id, 'two', 'dup_name') })).rejects.toMatchObject({ code: 'P2002' })
+  })
+
+  it('rejects renaming a tool onto another tool name', async () => {
+    const p = await newProject()
+    await db.tool.create({ data: tool(p.id, 'one', 'taken') })
+    const other = await db.tool.create({ data: tool(p.id, 'two', 'free') })
+
+    await expect(db.tool.update({ where: { id: other.id }, data: { name: 'taken' } })).rejects.toMatchObject({
+      code: 'P2002',
+    })
+  })
+
+  it('allows the same name in different projects', async () => {
+    const [a, b] = [await newProject(), await newProject()]
+    await db.tool.create({ data: tool(a.id, 'one', 'shared') })
+    await expect(db.tool.create({ data: tool(b.id, 'one', 'shared') })).resolves.toBeTruthy()
+  })
+
+  it('is case-sensitive, like the MCP names it protects', async () => {
+    const p = await newProject()
+    await db.tool.create({ data: tool(p.id, 'one', 'getPet') })
+    await expect(db.tool.create({ data: tool(p.id, 'two', 'getpet') })).resolves.toBeTruthy()
+  })
+})
