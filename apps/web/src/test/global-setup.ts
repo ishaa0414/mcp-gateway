@@ -9,6 +9,8 @@ export async function setup() {
   // Make the test DB URL available to worker threads via vitest's env injection
   process.env['DATABASE_URL'] = testDbUrl
   process.env['DATABASE_URL_TEST'] = testDbUrl
+  // Many test workers share one Postgres (100 connections); keep each worker's pool small.
+  process.env['DATABASE_POOL_MAX'] ??= '3'
 
   const prismaSchemaDir = resolve(__dirname, '../../../../packages/db')
 

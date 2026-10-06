@@ -9,6 +9,8 @@ export async function setup() {
   // Inherited by the test workers: the real database client reads these when first used.
   process.env['DATABASE_URL'] = testDbUrl
   process.env['DATABASE_URL_TEST'] = testDbUrl
+  // Many test workers share one Postgres (100 connections); keep each worker's pool small.
+  process.env['DATABASE_POOL_MAX'] ??= '3'
   // Redis database 1, so tests never touch the cache the dev gateway uses (database 0).
   process.env['REDIS_URL_TEST'] ??= 'redis://localhost:6379/1'
 
