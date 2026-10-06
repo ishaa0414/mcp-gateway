@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 
 // Unauthenticated so CI can assert the server booted with a working
-// DATABASE_URL. Excluded from the middleware matcher in src/middleware.ts.
+// DATABASE_URL. Excluded from the proxy matcher in src/proxy.ts.
 export const dynamic = 'force-dynamic'
 
 export async function GET() {

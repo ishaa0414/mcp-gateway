@@ -3,10 +3,11 @@ import GitHub from 'next-auth/providers/github'
 import Credentials from 'next-auth/providers/credentials'
 
 /**
- * Edge-safe auth config.
- * - No Prisma imports (not available in Edge runtime)
+ * Auth config shared with the proxy (src/proxy.ts), kept free of database code.
+ * - No Prisma/argon2 imports: the proxy runs in front of the app and should not
+ *   depend on the database layer
  * - Credentials.authorize is intentionally absent here; it lives in auth.ts
- * - Used by middleware.ts for route protection
+ * - Used by proxy.ts for route protection
  */
 export const authConfig = {
   providers: [
