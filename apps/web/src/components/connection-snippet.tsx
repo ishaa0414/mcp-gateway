@@ -44,13 +44,22 @@ export function ConnectionSnippet({ url, slug }: { url: string; slug: string }) 
               </div>
             </li>
             <li>
-              Set <strong>Transport Type</strong> to <strong>Streamable HTTP</strong>, paste the URL above, and add the header{' '}
-              <code className="text-xs">Authorization</code> with the value <code className="text-xs">Bearer &lt;your-api-key&gt;</code>.
+              Click <strong>Add Servers</strong>, then <strong>+ Add manually</strong>. Choose any Server ID, set <strong>Transport</strong>{' '}
+              to <strong>streamable-http</strong>, paste the URL above, and click <strong>Add</strong>.
             </li>
             <li>
-              Click <strong>Connect</strong>, then open <strong>Tools</strong> and <strong>List Tools</strong>.
+              Open the new server&apos;s <strong>Settings</strong>, expand <strong>Custom Headers</strong>, click <strong>+ Add Header</strong>{' '}
+              and enter <code className="text-xs">Authorization</code> with the value{' '}
+              <code className="text-xs">Bearer &lt;your-api-key&gt;</code>.
+            </li>
+            <li>
+              Switch the server on (it shows <strong>Connected</strong>), open <strong>Tools</strong>, pick a tool and click{' '}
+              <strong>Execute Tool</strong>.
             </li>
           </ol>
+          <p className="text-xs text-muted-foreground">
+            The Inspector saves headers in plain text in <code>~/.mcp-inspector/mcp.json</code>, so use a key you can revoke.
+          </p>
         </div>
 
         <div className="space-y-1.5">

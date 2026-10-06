@@ -65,6 +65,13 @@ would turn those clients away, so we do not use it.
   authentication.
 
 **Inspector 2.9.0.** Requires Node >= 22.19 (the repo's engines are looser; this machine's 22.13
-printed an engine warning but ran fine). Web UI: `npx @modelcontextprotocol/inspector`, then pick
-Streamable HTTP. CLI: `--cli <url> --transport http --header "Authorization: Bearer <key>" --method
-tools/list`, or `--method tools/call --tool-name <name> --tool-arg key=value`.
+printed an engine warning but ran fine). CLI: `--cli <url> --transport http --header "Authorization:
+Bearer <key>" --method tools/list`, or `--method tools/call --tool-name <name> --tool-arg key=value`
+(numbers such as `petId=1` arrive typed, so integer parameters validate).
+
+Web UI (`npx @modelcontextprotocol/inspector`, printed URL includes an API token): **Add Servers ->
++ Add manually**, Transport `streamable-http`, URL. The Add dialog has no header field; open the
+server's **Settings -> Custom Headers -> + Add Header** for `Authorization`. Settings also has a
+**Protocol Era** selector (Legacy / Auto / Modern), which is a quick way to exercise both protocol
+revisions. The toggle on the server card connects; **Tools** lists them and **Execute Tool** runs one.
+Headers are saved in plain text in `~/.mcp-inspector/mcp.json`.

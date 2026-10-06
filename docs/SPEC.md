@@ -105,11 +105,11 @@ Work **one phase at a time**. At the end of each phase: run lint, typecheck and 
 **Phase 0: Foundation** ✅ *Done*
 Monorepo (pnpm + Turborepo), TypeScript strict, ESLint/Prettier, Docker Compose (Postgres 17 + Redis 7), Prisma 7 schema with all models and initial migration, seed, GitHub Actions CI, `packages/crypto` (AES-256-GCM + API key), Fastify gateway (`/health`), BullMQ worker skeleton, Next.js 16 + Tailwind v4 home page.
 
-**Phase 1: Auth, Projects, OpenAPI Import, Tool Builder**
+**Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** ✅ *Done*
 Auth.js v5 (GitHub OAuth + email/password with argon2), projects CRUD, OpenAPI 3.0/3.1 import (file upload + SSRF-safe URL fetch in `packages/shared`), endpoint→tool conversion in `packages/openapi-tools` (heavily unit-tested with fixtures), tool editing UI (enable/disable, rename, description, hidden params, JSON schema preview). shadcn/ui dashboard layout (sidebar + tabs).
 *Done when:* user can sign in, create a project, import the Petstore spec, and curate tools. Every DB query is scoped to the signed-in user. Tests cover conversion logic and cross-user access control.
 
-**Phase 2: Hosted MCP Server**
+**Phase 2: Hosted MCP Server** ✅ *Implemented, in review*
 `/mcp/:projectSlug` (Streamable HTTP). Start with a small hand-written spike to learn the current SDK. Then wire it to enabled tools from Redis cache (fallback to Postgres). API-key auth (hashed, shown once, revocable). Upstream API auth (encrypted credentials). SSRF protection + timeouts + response size limits reusing the helper from Phase 1.
 *Done when:* MCP Inspector connected to `/mcp/petstore` lists enabled tools and a `tools/call` returns real upstream data.
 
