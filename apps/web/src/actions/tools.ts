@@ -1,6 +1,7 @@
 'use server'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
+import { cacheInvalidator } from '@/lib/redis'
 import { revalidatePath } from 'next/cache'
 import { toolNameTakenMessage, validateToolName } from '@mcp-gateway/openapi-tools'
 
@@ -24,6 +25,7 @@ export async function updateToolEnabled(
   try {
     const tool = await requireToolOwner(toolId)
     await db.tool.update({ where: { id: toolId }, data: { enabled } })
+    await cacheInvalidator.project(tool.project.slug)
     revalidatePath(`/projects/${tool.project.slug}/tools`)
     return {}
   } catch (e: unknown) {
@@ -78,6 +80,7 @@ export async function updateTool(
       },
     })
 
+    await cacheInvalidator.project(tool.project.slug)
     revalidatePath(`/projects/${tool.project.slug}/tools`)
     return {}
   } catch (e: unknown) {

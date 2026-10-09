@@ -17,30 +17,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Pencil } from 'lucide-react'
 import { toolNameTakenMessage, validateToolName } from '@mcp-gateway/openapi-tools/tool-name'
+import { toAgentSchema } from '@mcp-gateway/openapi-tools/agent-schema'
 import type { Tool } from '@mcp-gateway/db'
 
 interface ToolListProps {
   tools: Tool[]
   projectSlug: string
-}
-
-function getAgentSchema(
-  inputSchema: object,
-  hiddenParams: object
-): object {
-  const schema = inputSchema as {
-    type: string
-    properties?: Record<string, unknown>
-    required?: string[]
-  }
-  const hidden = Object.keys(hiddenParams as Record<string, unknown>)
-  if (!hidden.length) return schema
-
-  const properties = { ...schema.properties }
-  for (const k of hidden) delete properties[k]
-  const required = (schema.required ?? []).filter((k: string) => !hidden.includes(k))
-
-  return { type: 'object', properties, ...(required.length ? { required } : {}) }
 }
 
 export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
@@ -194,7 +176,7 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                     </p>
                     <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 text-xs">
                       {JSON.stringify(
-                        getAgentSchema(
+                        toAgentSchema(
                           editingTool.inputSchema as object,
                           editingTool.hiddenParams as object
                         ),

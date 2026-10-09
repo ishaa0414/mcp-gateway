@@ -1,0 +1,26 @@
+# Keep the build context small and free of secrets and local build output.
+.git
+.github
+.turbo
+.vscode
+.idea
+
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+
+# Secrets and local configuration never go into an image.
+.env
+.env.*
+!.env.example
+
+# Not needed to build the gateway.
+apps/web/src
+apps/web/public
+apps/worker/src
+docs
+*.md
+docker-compose.yml

@@ -11,7 +11,13 @@ function createPrismaClient(): PrismaClient {
         '  • If this appears in the browser console, server-only code was imported into a client component.',
     )
   }
-  const adapter = new PrismaPg({ connectionString })
+  // The pg default is 10 connections per client. Hosted databases (Neon's free tier, Render) and
+  // test runs with many workers need a smaller, explicit cap.
+  const poolMax = Number(process.env['DATABASE_POOL_MAX'])
+  const adapter = new PrismaPg({
+    connectionString,
+    ...(Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {}),
+  })
   return new PrismaClient({ adapter })
 }
 

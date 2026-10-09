@@ -2,7 +2,7 @@
 
 Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server that AI agents can connect to — in 10 minutes.
 
-> **Status:** Phase 0 — Foundation (monorepo setup, infra, DB schema, CI)
+> **Status:** Phase 2 — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys. Rate limiting, request logging and analytics are next.
 
 ## Prerequisites
 
@@ -71,6 +71,42 @@ curl http://localhost:4000/health
 # → { "postgres": "ok", "redis": "ok" }
 ```
 
+## Try it: from an OpenAPI spec to MCP Inspector
+
+1. Start everything (`docker compose up -d`, then `pnpm dev`) and sign up at http://localhost:3000.
+2. **New project**, then on the **Spec** tab import a spec by URL, for example `https://petstore3.swagger.io/api/v3/openapi.json`. The upstream base URL is filled in from the spec.
+3. On **Tools**, switch off the operations you do not want agents to see. Rename them or hide parameters if you like.
+4. If your API needs authentication, set it under **Settings → Upstream authentication**. The secret is stored encrypted and never shown again.
+5. On **API Keys**, create a key and copy it. It is shown once.
+6. The **Overview** tab shows the full MCP URL (`http://localhost:4000/mcp/<slug>`). Connect with the Inspector:
+
+   ```bash
+   npx @modelcontextprotocol/inspector
+   ```
+
+   In the Inspector: **Add Servers → + Add manually**, set **Transport** to `streamable-http`, paste the URL and click **Add**. Open that server's **Settings → Custom Headers → + Add Header** and enter `Authorization` / `Bearer <your key>`. Switch the server on (it shows *Connected*), open **Tools**, pick one and click **Execute Tool**. The Inspector keeps headers in plain text in `~/.mcp-inspector/mcp.json`, so use a key you can revoke. On Node below 22.19, `npx` installs Inspector v1, whose screens differ: set **Transport Type** to *Streamable HTTP*, paste the URL, open **Authentication → Custom Headers**, add `Authorization` / `Bearer <your key>`, switch the header on and click **Connect**. Or without a browser:
+
+   ```bash
+   npx @modelcontextprotocol/inspector --cli http://localhost:4000/mcp/<slug> --transport http \
+     --header "Authorization: Bearer <your key>" --method tools/list
+   ```
+
+## Run the gateway in Docker
+
+The gateway ships as a standalone image, configured only through environment variables, so it can run on Render, Koyeb or any VM:
+
+```bash
+docker build -f apps/gateway/Dockerfile -t mcp-gateway .
+
+docker run --rm -p 4000:4000 \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/mcpgateway" \
+  -e REDIS_URL="redis://host:6379" \
+  -e ENCRYPTION_KEY="<the same 64 hex characters the dashboard uses>" \
+  mcp-gateway
+```
+
+Hosting platforms that assign a port set `PORT`, which the gateway honours. The image does not run migrations (use `pnpm db:migrate:deploy` against the production database), and `ENCRYPTION_KEY` must match the dashboard's, or stored credentials cannot be decrypted. Set `GATEWAY_PUBLIC_URL` on the dashboard to the gateway's public address so the connection instructions show the right URL.
+
 ## Project structure
 
 ```
@@ -81,7 +117,7 @@ apps/
 packages/
   db/              Prisma schema, client, migrations, seed
   shared/          Zod schemas, shared types
-  openapi-tools/   OpenAPI → MCP tool definitions (Phase 2)
+  openapi-tools/   OpenAPI → tool definitions, argument mapping, request building
   crypto/          AES-256-GCM + API key hashing
 docs/
   SPEC.md          Project specification

@@ -29,7 +29,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 | Dashboard | Next.js (App Router) + Tailwind CSS + shadcn/ui, in `apps/web` |
 | Dashboard backend | Next.js route handlers / server actions inside `apps/web` |
 | Dashboard auth | Auth.js (NextAuth) with GitHub OAuth + email/password |
-| Gateway | Node + Fastify + official MCP TypeScript SDK (`@modelcontextprotocol/sdk`), Streamable HTTP transport, in `apps/gateway` |
+| Gateway | Node + Fastify + official MCP TypeScript SDK v2 (`@modelcontextprotocol/server` + `@modelcontextprotocol/node`; the old `@modelcontextprotocol/sdk` is v1, now maintenance-only), Streamable HTTP transport, in `apps/gateway` |
 | Background worker | BullMQ consumer for logs, in `apps/worker` |
 | Database | PostgreSQL + Prisma, schema in `packages/db` |
 | Cache / queues / rate limits | Redis |
@@ -39,7 +39,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 | Local infra | Docker Compose (Postgres + Redis) |
 | CI | GitHub Actions: lint, typecheck, test on every PR |
 
-**Important:** the MCP spec and SDK change quickly. Before writing any MCP code, read the current SDK README and examples (in `node_modules/@modelcontextprotocol/sdk` and the official docs) and follow the current APIs. Do not rely on memory for SDK class names or transport details.
+**Important:** the MCP spec and SDK change quickly. Before writing any MCP code, read the current SDK README and examples (in `node_modules/@modelcontextprotocol/server` and the official docs; findings so far are in `apps/gateway/examples/README.md`) and follow the current APIs. Do not rely on memory for SDK class names or transport details.
 
 ## 4. Repo layout
 
@@ -105,11 +105,11 @@ Work **one phase at a time**. At the end of each phase: run lint, typecheck and 
 **Phase 0: Foundation** ✅ *Done*
 Monorepo (pnpm + Turborepo), TypeScript strict, ESLint/Prettier, Docker Compose (Postgres 17 + Redis 7), Prisma 7 schema with all models and initial migration, seed, GitHub Actions CI, `packages/crypto` (AES-256-GCM + API key), Fastify gateway (`/health`), BullMQ worker skeleton, Next.js 16 + Tailwind v4 home page.
 
-**Phase 1: Auth, Projects, OpenAPI Import, Tool Builder**
+**Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** ✅ *Done*
 Auth.js v5 (GitHub OAuth + email/password with argon2), projects CRUD, OpenAPI 3.0/3.1 import (file upload + SSRF-safe URL fetch in `packages/shared`), endpoint→tool conversion in `packages/openapi-tools` (heavily unit-tested with fixtures), tool editing UI (enable/disable, rename, description, hidden params, JSON schema preview). shadcn/ui dashboard layout (sidebar + tabs).
 *Done when:* user can sign in, create a project, import the Petstore spec, and curate tools. Every DB query is scoped to the signed-in user. Tests cover conversion logic and cross-user access control.
 
-**Phase 2: Hosted MCP Server**
+**Phase 2: Hosted MCP Server** ✅ *Implemented, in review*
 `/mcp/:projectSlug` (Streamable HTTP). Start with a small hand-written spike to learn the current SDK. Then wire it to enabled tools from Redis cache (fallback to Postgres). API-key auth (hashed, shown once, revocable). Upstream API auth (encrypted credentials). SSRF protection + timeouts + response size limits reusing the helper from Phase 1.
 *Done when:* MCP Inspector connected to `/mcp/petstore` lists enabled tools and a `tools/call` returns real upstream data.
 
@@ -123,6 +123,7 @@ Call volume over time, top tools, error rate, p50/p95 latency, recent calls tabl
 
 **Phase 5: Playground, Connection Instructions, Polish, Deploy**
 Playground (schema-driven form → raw upstream request/response). Connection instructions page (MCP Inspector, Claude, Cursor, VS Code). Empty, loading and error states throughout. Playwright tests for the main flow. Free deployment guide (Vercel for `web`, free VM or Cloudflare Tunnel for gateway + worker + Redis, Neon for Postgres). Live deployment.
+*Also in this phase (carried over from Phase 2):* give `@mcp-gateway/openapi-tools` a lightweight runtime entry (request map, request build, agent schema) so the gateway no longer loads `swagger-parser` at startup, and slim the gateway Docker image.
 *Done when:* someone new can follow the README and get everything running end-to-end.
 
 ## 10. Working rules for Claude Code

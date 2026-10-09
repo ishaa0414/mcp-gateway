@@ -12,6 +12,9 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
 
+  // Where agents reach the gateway, shown in the connection instructions. Not used for any request.
+  GATEWAY_PUBLIC_URL: z.url('must be an absolute URL, e.g. http://localhost:4000').default('http://localhost:4000'),
+
   ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex characters (32 bytes, openssl rand -hex 32)'),

@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { ConnectionSnippet } from '@/components/connection-snippet'
+import { env } from '@/lib/env'
+import { mcpEndpointUrl } from '@/lib/mcp-url'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -40,12 +43,6 @@ export default async function OverviewPage({ params }: Props) {
         <CardHeader><CardTitle className="text-base">Connection details</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <p className="text-xs font-medium text-muted-foreground">MCP endpoint</p>
-            <code className="mt-1 block rounded bg-muted px-2 py-1 text-sm">
-              /mcp/{project.slug}
-            </code>
-          </div>
-          <div>
             <p className="text-xs font-medium text-muted-foreground">Upstream base URL</p>
             <code className="mt-1 block rounded bg-muted px-2 py-1 text-sm">
               {project.upstreamBaseUrl || <span className="text-muted-foreground">Not set</span>}
@@ -59,6 +56,8 @@ export default async function OverviewPage({ params }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <ConnectionSnippet url={mcpEndpointUrl(env().GATEWAY_PUBLIC_URL, project.slug)} slug={project.slug} />
 
       {tools.length === 0 && (
         <div className="flex flex-col items-center rounded-lg border border-dashed py-10">

@@ -46,3 +46,26 @@ export interface MergeResult {
   /** Present in both and nothing spec-derived changed (includes already-removed tools). */
   unchanged: number
 }
+
+/** Where an agent-supplied argument ends up in the upstream HTTP request. */
+export type ArgLocation = 'path' | 'query' | 'header' | 'cookie' | 'body' | 'bodyRoot'
+
+export interface ArgBinding {
+  /** The argument's name in the tool's input schema (what the agent sends). */
+  arg: string
+  in: ArgLocation
+  /**
+   * The name on the wire: the parameter name for path/query/header/cookie, the property
+   * name inside the JSON/form body for `body`. Unused for `bodyRoot` (the whole body).
+   */
+  name: string
+  /** Query arrays: repeat the key (true, the OpenAPI default) or join with commas. */
+  explode?: boolean
+}
+
+/** How to turn a tool call's arguments into an HTTP request. Derived from the OpenAPI operation. */
+export interface RequestMap {
+  bindings: ArgBinding[]
+  /** Only `application/json` and `application/x-www-form-urlencoded` bodies are supported. */
+  bodyContentType?: 'json' | 'form'
+}

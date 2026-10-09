@@ -391,3 +391,52 @@ describe('database enforces unique tool names per project', () => {
     await expect(db.tool.create({ data: tool(p.id, 'two', 'getpet') })).resolves.toBeTruthy()
   })
 })
+
+// JSONB does not preserve key order, so compare property names as a sorted set.
+const propertyNames = (schema: unknown) => Object.keys((schema as { properties: object }).properties).sort()
+
+describe('re-importing an existing project picks up the new argument mapping', () => {
+  // `id` is both a path parameter and a body field. The old extractor kept one `id` (the
+  // body field won) and lost the other; the new one names them `id` and `body_id`.
+  const clashingSpec = JSON.stringify({
+    openapi: '3.0.3',
+    info: { title: 'T', version: '1' },
+    paths: {
+      '/things/{id}': {
+        put: {
+          operationId: 'updateThing',
+          summary: 'Update a thing',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          requestBody: {
+            content: { 'application/json': { schema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } } } },
+          },
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  })
+
+  it('rewrites the stored schema of an unchanged operation, keeping the user edits', async () => {
+    const p = await newProject()
+    await importSpec(db, { projectId: p.id, specText: clashingSpec })
+    const tool = await toolByOp(p.id, 'updateThing')
+    expect(propertyNames(tool.inputSchema)).toEqual(['body_id', 'id', 'name'])
+
+    // Put the tool back into the shape the previous extractor stored, plus a user edit.
+    await db.tool.update({
+      where: { id: tool.id },
+      data: {
+        name: 'update_it',
+        enabled: false,
+        inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } },
+      },
+    })
+
+    const summary = await importSpec(db, { projectId: p.id, specText: clashingSpec })
+
+    expect(summary).toMatchObject({ added: 0, updated: 1, removed: 0, unchanged: 0 })
+    const after = await toolByOp(p.id, 'updateThing')
+    expect(propertyNames(after.inputSchema)).toEqual(['body_id', 'id', 'name'])
+    expect(after).toMatchObject({ name: 'update_it', enabled: false })
+  })
+})
