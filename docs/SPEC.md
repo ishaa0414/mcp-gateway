@@ -123,6 +123,7 @@ Call volume over time, top tools, error rate, p50/p95 latency, recent calls tabl
 
 **Phase 5: Playground, Connection Instructions, Polish, Deploy**
 Playground (schema-driven form → raw upstream request/response). Connection instructions page (MCP Inspector, Claude, Cursor, VS Code). Empty, loading and error states throughout. Playwright tests for the main flow. Free deployment guide (Vercel for `web`, free VM or Cloudflare Tunnel for gateway + worker + Redis, Neon for Postgres). Live deployment.
+*Also in this phase (carried over from Phase 2):* give `@mcp-gateway/openapi-tools` a lightweight runtime entry (request map, request build, agent schema) so the gateway no longer loads `swagger-parser` at startup, and slim the gateway Docker image.
 *Done when:* someone new can follow the README and get everything running end-to-end.
 
 ## 10. Working rules for Claude Code

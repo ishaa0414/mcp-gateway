@@ -39,6 +39,7 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - Keep `docs/DECISIONS.md` updated with one short entry per significant technical choice.
 - If a requirement in the spec is unclear or conflicts with how the current MCP SDK works, stop and ask instead of guessing.
 - Never weaken a security requirement to make something work.
+- Never delete or modify files outside the repo without asking the user first (home folder, temp folders, tool config such as `~/.mcp-inspector`, other projects).
 - The Bash tool on Windows is Git Bash: write paths with forward slashes (`D:/mcp-gateway/...`) or quote them. An unquoted `D:\mcp-gateway\apps` loses its backslashes and creates a stray folder literally named `D:mcp-gatewayapps`.
 
 Always read docs/SPEC.md before starting any phase.
