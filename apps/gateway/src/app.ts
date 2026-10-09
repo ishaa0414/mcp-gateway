@@ -51,7 +51,11 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
   const validators = new ValidatorCache()
   const lastUsed = new LastUsedTracker(db, config.lastUsedIntervalMs, log)
 
-  const rateLimiter = new RateLimiter(redis, log, { windowMs: config.rateLimitWindowMs, breakerMs: config.rateLimitBreakerMs })
+  const rateLimiter = new RateLimiter(redis, log, {
+    windowMs: config.rateLimitWindowMs,
+    breakerMs: config.rateLimitBreakerMs,
+    ...(config.rateLimitNow ? { now: config.rateLimitNow } : {}),
+  })
 
   registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter })
 

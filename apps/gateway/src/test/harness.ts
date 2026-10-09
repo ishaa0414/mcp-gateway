@@ -236,18 +236,23 @@ export interface RunningGateway {
   close(): Promise<void>
 }
 
+// GATEWAY_TEST_LOG=1 prints the gateway's warnings during a test run (Redis failures, fail-open limiting).
+const testLogger = () => (process.env['GATEWAY_TEST_LOG'] ? { level: 'warn' } : false)
+
 export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string } = {}): Promise<RunningGateway> {
   const redis = new Redis(options.redisUrl ?? process.env['REDIS_URL_TEST'] ?? 'redis://localhost:6379/1', {
     maxRetriesPerRequest: 1,
     connectTimeout: 1_000,
-    commandTimeout: 500,
+    // No commandTimeout here (the real gateway has 1 s). Nothing in the suite tests a hung Redis, a dead one
+    // fails at once without it, and under a loaded machine a 500 ms limit made healthy Redis calls fail,
+    // which made the cache miss and the limiter fail open (as designed) in tests that assert exact behaviour.
     enableOfflineQueue: false,
     lazyConnect: true,
   })
   redis.on('error', () => undefined)
   await redis.connect().catch(() => undefined)
 
-  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logger: false })
+  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logger: testLogger() })
   await app.listen({ port: 0, host: '127.0.0.1' })
   const baseUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
 

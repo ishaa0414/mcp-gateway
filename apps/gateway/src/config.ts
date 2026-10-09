@@ -16,6 +16,8 @@ export interface AppConfig {
   rateLimitWindowMs: number
   /** After a Redis failure, how long rate limiting is skipped before Redis is tried again. */
   rateLimitBreakerMs: number
+  /** Clock for the rate limiter. Tests only: lets them move time without sleeping. */
+  rateLimitNow?: () => number
 }
 
 /** The slice of a pino/Fastify logger the gateway uses. */
