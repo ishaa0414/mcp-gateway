@@ -38,7 +38,7 @@ export function ConnectionSnippet({ url, slug }: { url: string; slug: string }) 
               tab and copy it.
             </li>
             <li>
-              Start the Inspector (needs Node 22.19 or newer):
+              Start the Inspector:
               <div className="mt-1.5">
                 <Command>npx @modelcontextprotocol/inspector</Command>
               </div>
@@ -57,6 +57,11 @@ export function ConnectionSnippet({ url, slug }: { url: string; slug: string }) 
               <strong>Execute Tool</strong>.
             </li>
           </ol>
+          <p className="text-xs text-muted-foreground">
+            On Node below 22.19, <code>npx</code> installs Inspector v1, whose screens differ: set <strong>Transport Type</strong> to{' '}
+            <strong>Streamable HTTP</strong>, paste the URL, open <strong>Authentication → Custom Headers</strong>, add{' '}
+            <code>Authorization</code> with <code>Bearer &lt;your-api-key&gt;</code>, switch the header on, and click <strong>Connect</strong>.
+          </p>
           <p className="text-xs text-muted-foreground">
             The Inspector saves headers in plain text in <code>~/.mcp-inspector/mcp.json</code>, so use a key you can revoke.
           </p>

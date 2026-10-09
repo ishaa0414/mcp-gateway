@@ -175,7 +175,7 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
                 value={rateLimit}
                 onChange={(e) => setRateLimit(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Enforced from a later release. The value is saved with the key.</p>
+              <p className="text-xs text-muted-foreground">Not enforced yet: rate limiting arrives in a later release. The value is saved with the key.</p>
             </div>
             {createError && (
               <p role="alert" className="text-sm text-destructive">

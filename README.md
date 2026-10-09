@@ -78,13 +78,13 @@ curl http://localhost:4000/health
 3. On **Tools**, switch off the operations you do not want agents to see. Rename them or hide parameters if you like.
 4. If your API needs authentication, set it under **Settings → Upstream authentication**. The secret is stored encrypted and never shown again.
 5. On **API Keys**, create a key and copy it. It is shown once.
-6. The **Overview** tab shows the full MCP URL (`http://localhost:4000/mcp/<slug>`). Connect with the Inspector (it needs Node 22.19 or newer):
+6. The **Overview** tab shows the full MCP URL (`http://localhost:4000/mcp/<slug>`). Connect with the Inspector:
 
    ```bash
    npx @modelcontextprotocol/inspector
    ```
 
-   In the Inspector: **Add Servers → + Add manually**, set **Transport** to `streamable-http`, paste the URL and click **Add**. Open that server's **Settings → Custom Headers → + Add Header** and enter `Authorization` / `Bearer <your key>`. Switch the server on (it shows *Connected*), open **Tools**, pick one and click **Execute Tool**. The Inspector keeps headers in plain text in `~/.mcp-inspector/mcp.json`, so use a key you can revoke. Or without a browser:
+   In the Inspector: **Add Servers → + Add manually**, set **Transport** to `streamable-http`, paste the URL and click **Add**. Open that server's **Settings → Custom Headers → + Add Header** and enter `Authorization` / `Bearer <your key>`. Switch the server on (it shows *Connected*), open **Tools**, pick one and click **Execute Tool**. The Inspector keeps headers in plain text in `~/.mcp-inspector/mcp.json`, so use a key you can revoke. On Node below 22.19, `npx` installs Inspector v1, whose screens differ: set **Transport Type** to *Streamable HTTP*, paste the URL, open **Authentication → Custom Headers**, add `Authorization` / `Bearer <your key>`, switch the header on and click **Connect**. Or without a browser:
 
    ```bash
    npx @modelcontextprotocol/inspector --cli http://localhost:4000/mcp/<slug> --transport http \
