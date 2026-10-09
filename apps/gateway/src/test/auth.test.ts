@@ -53,6 +53,33 @@ describe('API key authentication', () => {
     expect(res.body).toMatchObject({ jsonrpc: '2.0', error: { code: -32001 }, id: null })
   })
 
+  it('says in the 401 body that the API key is missing, invalid or revoked, and that OAuth is not used', async () => {
+    const res = await list(fx.slug, undefined)
+    const message: string = res.body['error']['message']
+
+    expect(message).toMatch(/API key missing, invalid or revoked/)
+    expect(message).toContain('Authorization: Bearer')
+    expect(message).toMatch(/not OAuth/)
+  })
+
+  it('answers OAuth discovery probes with a fast 404, so clients do not hang or start an OAuth flow', async () => {
+    const paths = [
+      '/.well-known/oauth-protected-resource',
+      `/.well-known/oauth-protected-resource/mcp/${fx.slug}`,
+      '/.well-known/oauth-authorization-server',
+      `/.well-known/oauth-authorization-server/mcp/${fx.slug}`,
+      '/.well-known/openid-configuration',
+      '/register',
+    ]
+    for (const path of paths) {
+      const started = performance.now()
+      const res = await fetch(`${gateway.baseUrl}${path}`)
+      expect(res.status, path).toBe(404)
+      expect(performance.now() - started, path).toBeLessThan(1_000)
+      expect(await res.json()).toMatchObject({ error: 'not_found' })
+    }
+  })
+
   it('rejects malformed Authorization headers', async () => {
     for (const authorization of ['Basic dXNlcjpwYXNz', 'Bearer', 'Bearer not-a-key', fx.apiKey, `Token ${fx.apiKey}`]) {
       const res = await list(fx.slug, undefined, { authorization })

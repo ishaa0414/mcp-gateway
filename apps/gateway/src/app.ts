@@ -41,6 +41,10 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
     return reply.code(500).send(rpcError(-32603, 'Internal error'))
   })
 
+  // There is no OAuth here (API keys only). Clients that get a 401 probe discovery URLs such as
+  // /.well-known/oauth-protected-resource; a prompt, explicit 404 tells them to stop.
+  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'not_found', message: 'Not found. This server uses API keys, not OAuth.' }))
+
   const log = app.log
   const cache = new SafeRedis(redis, log)
   const validators = new ValidatorCache()

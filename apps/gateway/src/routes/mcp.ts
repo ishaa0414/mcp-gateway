@@ -28,12 +28,19 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
   })
 
   // Missing, malformed, unknown, revoked, or another project's key all look the same on
-  // purpose, so the response never reveals which project slugs exist.
+  // purpose, so the response never reveals which project slugs exist. The message names
+  // every cause so a person reading it in a client knows what to check.
   const unauthorized = (reply: FastifyReply) =>
     reply
       .code(401)
       .header('www-authenticate', 'Bearer realm="mcp-gateway"')
-      .send(rpcError(-32001, 'Unauthorized: a valid API key for this project is required'))
+      .send(
+        rpcError(
+          -32001,
+          'API key missing, invalid or revoked. Send "Authorization: Bearer <api-key>" with an active API key for this project. ' +
+            'This server uses API keys, not OAuth.'
+        )
+      )
 
   app.post<{ Params: { projectSlug: string } }>('/mcp/:projectSlug', async (request, reply) => {
     const token = parseBearerKey(request.headers.authorization)

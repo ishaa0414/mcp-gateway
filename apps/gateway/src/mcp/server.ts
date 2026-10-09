@@ -2,6 +2,7 @@ import { createMcpHandler, ProtocolError, Server } from '@modelcontextprotocol/s
 import type { Tool } from '@modelcontextprotocol/server'
 import type { ProjectConfig } from '../cache/project-config.js'
 import type { AppConfig, Logger } from '../config.js'
+import { annotationsForMethod } from './annotations.js'
 import { executeTool, type ValidatorCache } from './call-tool.js'
 
 /** Who is calling and for which project. Set by the route after authentication, read by the factory. */
@@ -31,6 +32,7 @@ function buildServer({ project, apiKeyId }: McpPrincipal, deps: McpDeps): Server
         name: t.name,
         description: t.description,
         inputSchema: t.agentSchema as Tool['inputSchema'],
+        annotations: annotationsForMethod(t.method),
       })
     ),
   }))

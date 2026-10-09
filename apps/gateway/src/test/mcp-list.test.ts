@@ -69,6 +69,18 @@ describe('tools/list', () => {
     expect(getPet.description).toBe('Get a pet')
   })
 
+  it('annotates each tool from its HTTP method', async () => {
+    const client = await connectV2(gateway.mcpUrl(fx.slug), fx.apiKey)
+    const { tools } = await client.listTools()
+    await client.close()
+    const hints = (name: string) => tools.find((t) => t.name === name)!.annotations
+
+    expect(hints('getPet')).toMatchObject({ readOnlyHint: true, destructiveHint: false, openWorldHint: true }) // GET
+    expect(hints('emptyThing')).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true }) // DELETE
+    expect(hints('updatePet')).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true }) // PUT
+    expect(hints('createPet')).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: false }) // POST
+  })
+
   it('renames clashing arguments in the schema (body id vs path id)', async () => {
     const client = await connectV2(gateway.mcpUrl(fx.slug), fx.apiKey)
     const { tools } = await client.listTools()
