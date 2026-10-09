@@ -6,6 +6,7 @@ import { LastUsedTracker } from './auth/last-used.js'
 import { SafeRedis } from './cache/safe-redis.js'
 import type { AppConfig } from './config.js'
 import { ValidatorCache } from './mcp/call-tool.js'
+import { RateLimiter } from './ratelimit/limiter.js'
 import { registerMcpRoutes, rpcError } from './routes/mcp.js'
 
 export interface AppDeps {
@@ -28,7 +29,7 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
     origin: true,
     methods: ['POST', 'GET', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['authorization', 'content-type', 'accept', 'mcp-protocol-version', 'mcp-session-id', 'last-event-id'],
-    exposedHeaders: ['mcp-session-id', 'www-authenticate'],
+    exposedHeaders: ['mcp-session-id', 'www-authenticate', 'retry-after', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset'],
   })
 
   // Parse and size errors on the MCP endpoint are answered in JSON-RPC, like everything else there.
@@ -50,7 +51,9 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
   const validators = new ValidatorCache()
   const lastUsed = new LastUsedTracker(db, config.lastUsedIntervalMs, log)
 
-  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed })
+  const rateLimiter = new RateLimiter(redis, log, { windowMs: config.rateLimitWindowMs, breakerMs: config.rateLimitBreakerMs })
+
+  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter })
 
   app.get('/health', async (_req, reply) => {
     const status: Record<string, string> = {}

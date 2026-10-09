@@ -20,7 +20,7 @@ export type { SsrfFetchOptions, SsrfResponse } from './ssrf-fetch.js'
 export { validateEnv, EnvValidationError } from './env.js'
 export type { ValidateEnvOptions } from './env.js'
 
-export { projectConfigKey, apiKeyCacheKey, invalidateProjectConfig, invalidateApiKey } from './cache-keys.js'
+export { projectConfigKey, apiKeyCacheKey, rateLimitKey, invalidateProjectConfig, invalidateApiKey } from './cache-keys.js'
 export type { RedisLike } from './cache-keys.js'
 
 export { logEventSchema, sanitizeErrorMessage, LOG_ERROR_CLASSES, ERROR_MESSAGE_MAX_CHARS } from './log-event.js'

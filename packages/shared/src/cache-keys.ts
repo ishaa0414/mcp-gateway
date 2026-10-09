@@ -10,6 +10,9 @@ export const projectConfigKey = (slug: string): string => `mcp:cfg:${slug}`
 /** Result of looking up an API key by its SHA-256 hash. */
 export const apiKeyCacheKey = (hash: string): string => `mcp:key:${hash}`
 
+/** Sliding-window rate limit state of one API key (a sorted set of recent call times). */
+export const rateLimitKey = (apiKeyId: string): string => `mcp:rl:${apiKeyId}`
+
 /** The least a Redis client must offer for invalidation (ioredis satisfies this). */
 export interface RedisLike {
   del(...keys: string[]): Promise<unknown>

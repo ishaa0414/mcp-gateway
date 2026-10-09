@@ -12,6 +12,10 @@ export interface AppConfig {
   apiKeyCacheTtlSeconds: number
   /** Minimum time between lastUsedAt writes for one key. */
   lastUsedIntervalMs: number
+  /** Length of the rate-limit window (60 s in production; tests shorten it). */
+  rateLimitWindowMs: number
+  /** After a Redis failure, how long rate limiting is skipped before Redis is tried again. */
+  rateLimitBreakerMs: number
 }
 
 /** The slice of a pino/Fastify logger the gateway uses. */

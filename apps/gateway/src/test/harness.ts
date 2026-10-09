@@ -25,6 +25,8 @@ export const TEST_CONFIG: AppConfig = {
   configCacheTtlSeconds: 300,
   apiKeyCacheTtlSeconds: 30,
   lastUsedIntervalMs: 60_000,
+  rateLimitWindowMs: 60_000,
+  rateLimitBreakerMs: 5_000,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,10 +206,17 @@ export async function createFixture(options: FixtureOptions = {}): Promise<Fixtu
 }
 
 /** A second API key for a fixture's project. */
-export async function addApiKey(projectId: string, revoked = false) {
+export async function addApiKey(projectId: string, revoked = false, rateLimitPerMin?: number) {
   const key = generateApiKey()
   const row = await db.apiKey.create({
-    data: { projectId, name: 'extra', prefix: key.prefix, hash: key.hash, revokedAt: revoked ? new Date() : null },
+    data: {
+      projectId,
+      name: 'extra',
+      prefix: key.prefix,
+      hash: key.hash,
+      revokedAt: revoked ? new Date() : null,
+      ...(rateLimitPerMin !== undefined ? { rateLimitPerMin } : {}),
+    },
   })
   return { key: key.key, id: row.id, hash: key.hash }
 }

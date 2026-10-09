@@ -6,19 +6,28 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { lookupApiKey } from '../auth/api-key.js'
 import { parseBearerKey } from '../auth/bearer.js'
 import type { LastUsedTracker } from '../auth/last-used.js'
+import { rateLimitKey } from '@mcp-gateway/shared'
 import { loadProjectConfig } from '../cache/project-config.js'
 import type { SafeRedis } from '../cache/safe-redis.js'
 import type { AppConfig } from '../config.js'
 import { createGatewayHandler, type McpDeps, type McpPrincipal } from '../mcp/server.js'
+import type { RateLimiter } from '../ratelimit/limiter.js'
+import { toolCallsIn } from '../ratelimit/tool-calls.js'
 
 export interface McpRouteDeps extends McpDeps {
   db: PrismaClient
   cache: SafeRedis
   config: AppConfig
   lastUsed: LastUsedTracker
+  rateLimiter: RateLimiter
 }
 
 export const rpcError = (code: number, message: string) => ({ jsonrpc: '2.0' as const, error: { code, message }, id: null })
+
+/** JSON-RPC server-error code for "too many tool calls" (the range -32000..-32099 is reserved for servers). */
+export const RATE_LIMITED_CODE = -32029
+
+const windowLabel = (windowMs: number) => (windowMs === 60_000 ? 'minute' : `${windowMs / 1000} seconds`)
 
 export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): void {
   const handler = createGatewayHandler(deps)
@@ -47,6 +56,7 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
     if (!token) return unauthorized(reply)
 
     let principal: McpPrincipal
+    let rateLimitPerMin: number
     try {
       const key = await lookupApiKey(token, deps)
       if (!key || key.slug !== request.params.projectSlug) return unauthorized(reply)
@@ -56,9 +66,43 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
 
       deps.lastUsed.touch(key.id)
       principal = { project, apiKeyId: key.id }
+      rateLimitPerMin = key.rateLimitPerMin
     } catch (err) {
       request.log.error({ err: err instanceof Error ? err.message : String(err) }, 'could not authenticate or load the project')
       return reply.code(503).send(rpcError(-32603, 'The gateway is temporarily unavailable'))
+    }
+
+    // Rate limit, after authentication (so only real keys create counters) and before anything
+    // reaches the SDK or the upstream. Only tools/call counts; the limiter never throws.
+    const { count, firstId } = toolCallsIn(request.body)
+    if (count > 0) {
+      const decision = await deps.rateLimiter.check(rateLimitKey(principal.apiKeyId), rateLimitPerMin, count)
+      if (!decision.allowed) {
+        const windowSeconds = deps.config.rateLimitWindowMs / 1000
+        return reply
+          .code(429)
+          .header('retry-after', decision.retryAfterSeconds)
+          .header('ratelimit-limit', decision.limit)
+          .header('ratelimit-remaining', 0)
+          .header('ratelimit-reset', decision.retryAfterSeconds)
+          .send({
+            jsonrpc: '2.0',
+            id: firstId,
+            error: {
+              code: RATE_LIMITED_CODE,
+              message:
+                `Rate limit exceeded: ${decision.limit} tool calls per ${windowLabel(deps.config.rateLimitWindowMs)} for this API key. ` +
+                `Retry in ${decision.retryAfterSeconds} second${decision.retryAfterSeconds === 1 ? '' : 's'}.`,
+              data: { limit: decision.limit, windowSeconds, retryAfterSeconds: decision.retryAfterSeconds },
+            },
+          })
+      }
+      if ('limit' in decision) {
+        reply
+          .header('ratelimit-limit', decision.limit)
+          .header('ratelimit-remaining', decision.remaining)
+          .header('ratelimit-reset', decision.resetSeconds)
+      }
     }
 
     // The SDK handler does no authentication; it receives the principal through authInfo

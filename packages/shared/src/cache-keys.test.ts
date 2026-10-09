@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { apiKeyCacheKey, invalidateApiKey, invalidateProjectConfig, projectConfigKey } from './cache-keys.js'
+import { apiKeyCacheKey, invalidateApiKey, invalidateProjectConfig, projectConfigKey, rateLimitKey } from './cache-keys.js'
 
 describe('cache keys', () => {
   it('are stable, because the dashboard and the gateway are separate processes', () => {
     expect(projectConfigKey('petstore')).toBe('mcp:cfg:petstore')
     expect(apiKeyCacheKey('abc123')).toBe('mcp:key:abc123')
+    expect(rateLimitKey('key_1')).toBe('mcp:rl:key_1')
   })
 
   it('do not collide across kinds', () => {
-    expect(projectConfigKey('x')).not.toBe(apiKeyCacheKey('x'))
+    expect(new Set([projectConfigKey('x'), apiKeyCacheKey('x'), rateLimitKey('x')]).size).toBe(3)
   })
 })
 

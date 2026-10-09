@@ -116,7 +116,7 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
                   <tr key={k.id} className={k.revokedAt ? 'text-muted-foreground' : undefined}>
                     <td className="px-4 py-3">
                       <div className="font-medium">{k.name}</div>
-                      <div className="text-xs text-muted-foreground">{k.rateLimitPerMin} requests/min</div>
+                      <div className="text-xs text-muted-foreground">{k.rateLimitPerMin} tool calls/min</div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">{k.prefix}</td>
                     <td className="px-4 py-3 text-xs">{when(k.createdAt)}</td>
@@ -166,7 +166,7 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rateLimit">Rate limit (requests per minute)</Label>
+              <Label htmlFor="rateLimit">Rate limit (tool calls per minute)</Label>
               <Input
                 id="rateLimit"
                 type="number"
@@ -175,7 +175,7 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
                 value={rateLimit}
                 onChange={(e) => setRateLimit(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Not enforced yet: rate limiting arrives in a later release. The value is saved with the key.</p>
+              <p className="text-xs text-muted-foreground">Counted over a rolling 60 seconds, per key. Calls over the limit get HTTP 429 with a Retry-After header. Listing tools does not count.</p>
             </div>
             {createError && (
               <p role="alert" className="text-sm text-destructive">

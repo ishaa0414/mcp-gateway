@@ -26,6 +26,8 @@ const app = await buildApp({
     configCacheTtlSeconds: env.CONFIG_CACHE_TTL_SECONDS,
     apiKeyCacheTtlSeconds: env.API_KEY_CACHE_TTL_SECONDS,
     lastUsedIntervalMs: 5 * 60 * 1000,
+    rateLimitWindowMs: 60_000,
+    rateLimitBreakerMs: 5_000,
   },
 })
 
