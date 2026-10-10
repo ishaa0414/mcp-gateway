@@ -1,35 +1,35 @@
 // Must be first: loads the root .env and validates it before any module that
-// reads process.env at import time.
+// reads process.env at import time (@mcp-gateway/db reads DATABASE_URL).
 import { env } from './env.js'
 
-import { Worker } from 'bullmq'
+import { db } from '@mcp-gateway/db'
+import { LOG_QUEUE_NAME } from '@mcp-gateway/shared'
 import { Redis } from 'ioredis'
-
-const QUEUE_NAME = 'tool-call-logs'
+import { startLogWorker } from './log-worker.js'
+import { startRetention } from './retention.js'
 
 const connection = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null, // Required by BullMQ
 })
 
-const worker = new Worker(
-  QUEUE_NAME,
-  async (job) => {
-    console.log(`[worker] Processing job ${job.id} (${job.name})`, job.data)
-    // Phase 6: write to Postgres and update UsageRollup
-  },
-  { connection },
-)
+const worker = startLogWorker(db, connection)
+console.log(`[worker] Listening on queue: ${LOG_QUEUE_NAME}`)
+const retention = await startRetention(db, connection, { days: env.LOG_RETENTION_DAYS })
+console.log(`[worker] Deleting call logs older than ${env.LOG_RETENTION_DAYS} days every 6 hours`)
 
-worker.on('completed', (job) => {
-  console.log(`[worker] Job ${job.id} completed`)
-})
-
-worker.on('failed', (job, err) => {
-  console.error(`[worker] Job ${job?.id} failed:`, err.message)
-})
-
-worker.on('error', (err) => {
-  console.error('[worker] Worker error:', err.message)
-})
-
-console.log(`[worker] Listening on queue: ${QUEUE_NAME}`)
+// Finish the job in progress, then release connections.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    console.log(`[worker] ${signal}: shutting down`)
+    Promise.all([worker.close(), retention.close()])
+      .then(async () => {
+        connection.disconnect()
+        await db.$disconnect()
+        process.exit(0)
+      })
+      .catch((err: unknown) => {
+        console.error('[worker] error during shutdown', err)
+        process.exit(1)
+      })
+  })
+}

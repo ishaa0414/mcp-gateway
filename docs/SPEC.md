@@ -67,8 +67,8 @@ docker-compose.yml
 - **UpstreamCredential:** how the gateway authenticates to the upstream API. Types: none, bearer token, custom header, query param. The secret value is **encrypted at rest** (AES-256-GCM, key from env).
 - **Tool:** an MCP tool derived from one OpenAPI operation. Fields: operationId, HTTP method, path, tool name, description, JSON Schema for input, enabled flag, hidden params with fixed default values.
 - **ApiKey:** a key the publisher gives to their customers so agents can call the MCP endpoint. Store only a **SHA-256 hash** plus a short visible prefix (e.g. `mcpg_ab12…`). Fields: name, prefix, hash, rate limit per minute, lastUsedAt, revokedAt.
-- **ToolCallLog:** one row per tool call: project, tool, api key, input (sensitive fields masked), output (truncated), upstream HTTP status, latency ms, success/error, error message, timestamp. Index on (projectId, createdAt).
-- **UsageRollup:** hourly aggregates per project + tool (calls, errors, p50/p95 latency) produced by the worker for fast charts.
+- **ToolCallLog:** one row per tool call (and per sampled auth failure): project, tool (id and a name snapshot), api key, input (masked and truncated), upstream HTTP status, latency ms, success/error, error class, a one-line error message, response size, timestamp. The row id is the gateway-generated event id, which makes redelivery idempotent. Response bodies are not stored. Indexes: (projectId, createdAt), (projectId, toolName, createdAt), (createdAt) for retention, and the tool/key foreign keys.
+- ~~UsageRollup~~ (dropped in Phase 3): hourly rollups would be written by the worker, which does not exist in the worker-less deploy mode. Phase 4 queries `ToolCallLog` directly.
 
 ## 6. MVP features (in scope)
 
@@ -78,8 +78,8 @@ docker-compose.yml
 4. **Upstream credentials:** none / bearer / custom header / query param, encrypted at rest.
 5. **Hosted MCP endpoint:** `/mcp/:projectSlug` (Streamable HTTP). Works with MCP Inspector. `tools/list` returns enabled tools; `tools/call` maps args to HTTP params and calls upstream.
 6. **API keys:** create, list, revoke. Bearer auth. SHA-256 hash stored, shown once.
-7. **Rate limiting:** per API key, sliding window in Redis.
-8. **Request logging:** gateway pushes to BullMQ; worker writes to Postgres and updates rollups. Sensitive fields masked.
+7. **Rate limiting:** per API key, exact sliding window (60 s) in Redis, counting `tools/call` only; over the limit is HTTP 429 with `Retry-After`.
+8. **Request logging:** the gateway buffers events in memory and writes them in batches: through BullMQ to the worker (`LOG_SINK=queue`), or straight to Postgres (`LOG_SINK=direct`, no worker). Sensitive fields masked, rows older than `LOG_RETENTION_DAYS` deleted.
 9. **Analytics dashboard:** call volume over time, top tools, error rate, p50/p95 latency, recent calls with detail view.
 10. **Playground:** call any tool from the dashboard with a schema-driven form, see raw upstream request/response.
 11. **Connection instructions:** copy-paste snippets for MCP Inspector, Claude, Cursor, VS Code.
@@ -113,12 +113,12 @@ Auth.js v5 (GitHub OAuth + email/password with argon2), projects CRUD, OpenAPI 3
 `/mcp/:projectSlug` (Streamable HTTP). Start with a small hand-written spike to learn the current SDK. Then wire it to enabled tools from Redis cache (fallback to Postgres). API-key auth (hashed, shown once, revocable). Upstream API auth (encrypted credentials). SSRF protection + timeouts + response size limits reusing the helper from Phase 1.
 *Done when:* MCP Inspector connected to `/mcp/petstore` lists enabled tools and a `tools/call` returns real upstream data.
 
-**Phase 3: Rate Limiting and Logging**
-Redis sliding-window rate limiting per API key. Gateway pushes log event to BullMQ (never blocks request). Worker writes ToolCallLog and updates UsageRollup. Sensitive fields masked.
-*Done when:* exceeded limit returns a clear MCP error; every call appears in Postgres within seconds. Integration tests for both.
+**Phase 3: Rate Limiting and Logging** ✅ *Implemented, in review*
+Redis sliding-window rate limiting per API key (HTTP 429 with a clear JSON-RPC body). Gateway buffers log events and writes batches (BullMQ and the worker, or directly to Postgres in deploy mode); sensitive fields masked; retention. No UsageRollup (see §5).
+*Done when:* exceeded limit returns a clear error; every call appears in Postgres within seconds. Integration tests for both.
 
 **Phase 4: Analytics Dashboard**
-Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view. Charts using a lightweight library.
+Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library.
 *Done when:* dashboard shows real data from seeded/test calls.
 
 **Phase 5: Playground, Connection Instructions, Polish, Deploy**

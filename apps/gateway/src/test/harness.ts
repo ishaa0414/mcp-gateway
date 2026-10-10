@@ -12,8 +12,10 @@ import { extractTools } from '@mcp-gateway/openapi-tools'
 import { Client as ClientV2, StreamableHTTPClientTransport as TransportV2 } from '@modelcontextprotocol/client'
 import { Client as ClientV1 } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport as TransportV1 } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { LogEvent } from '@mcp-gateway/shared'
 import { Redis } from 'ioredis'
 import { buildApp } from '../app.js'
+import type { LogSink } from '../logging/index.js'
 import type { AppConfig } from '../config.js'
 
 export const ENCRYPTION_KEY = 'ab'.repeat(32)
@@ -25,6 +27,8 @@ export const TEST_CONFIG: AppConfig = {
   configCacheTtlSeconds: 300,
   apiKeyCacheTtlSeconds: 30,
   lastUsedIntervalMs: 60_000,
+  rateLimitWindowMs: 60_000,
+  rateLimitBreakerMs: 5_000,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,10 +208,17 @@ export async function createFixture(options: FixtureOptions = {}): Promise<Fixtu
 }
 
 /** A second API key for a fixture's project. */
-export async function addApiKey(projectId: string, revoked = false) {
+export async function addApiKey(projectId: string, revoked = false, rateLimitPerMin?: number) {
   const key = generateApiKey()
   const row = await db.apiKey.create({
-    data: { projectId, name: 'extra', prefix: key.prefix, hash: key.hash, revokedAt: revoked ? new Date() : null },
+    data: {
+      projectId,
+      name: 'extra',
+      prefix: key.prefix,
+      hash: key.hash,
+      revokedAt: revoked ? new Date() : null,
+      ...(rateLimitPerMin !== undefined ? { rateLimitPerMin } : {}),
+    },
   })
   return { key: key.key, id: row.id, hash: key.hash }
 }
@@ -220,29 +231,50 @@ export async function cleanupFixtures(): Promise<void> {
 // The gateway under test
 // ---------------------------------------------------------------------------
 
+/** Keeps events in memory so a test can look at what the gateway logged. */
+export class CollectingSink implements LogSink {
+  readonly events: LogEvent[] = []
+  closed = false
+  enqueue(event: LogEvent): void {
+    this.events.push(event)
+  }
+  async close(): Promise<void> {
+    this.closed = true
+  }
+}
+
 export interface RunningGateway {
+  /** The sink the gateway logs to (an in-memory CollectingSink unless the test supplied its own). */
+  logSink: LogSink
   baseUrl: string
   redis: Redis
   mcpUrl(slug: string): string
   close(): Promise<void>
 }
 
-export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string } = {}): Promise<RunningGateway> {
+// GATEWAY_TEST_LOG=1 prints the gateway's warnings during a test run (Redis failures, fail-open limiting).
+const testLogger = () => (process.env['GATEWAY_TEST_LOG'] ? { level: 'warn' } : false)
+
+export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string; logSink?: LogSink } = {}): Promise<RunningGateway> {
   const redis = new Redis(options.redisUrl ?? process.env['REDIS_URL_TEST'] ?? 'redis://localhost:6379/1', {
     maxRetriesPerRequest: 1,
     connectTimeout: 1_000,
-    commandTimeout: 500,
+    // No commandTimeout here (the real gateway has 1 s). Nothing in the suite tests a hung Redis, a dead one
+    // fails at once without it, and under a loaded machine a 500 ms limit made healthy Redis calls fail,
+    // which made the cache miss and the limiter fail open (as designed) in tests that assert exact behaviour.
     enableOfflineQueue: false,
     lazyConnect: true,
   })
   redis.on('error', () => undefined)
   await redis.connect().catch(() => undefined)
 
-  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logger: false })
+  const logSink = options.logSink ?? new CollectingSink()
+  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logSink, logger: testLogger() })
   await app.listen({ port: 0, host: '127.0.0.1' })
   const baseUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
 
   return {
+    logSink,
     baseUrl,
     redis,
     mcpUrl: (slug) => `${baseUrl}/mcp/${slug}`,
@@ -271,7 +303,15 @@ export interface MockUpstream {
 }
 
 export async function startUpstream(
-  handler: (req: IncomingMessage, res: ServerResponse, recorded: RecordedRequest) => void
+  handler: (req: IncomingMessage, res: ServerResponse, recorded: RecordedRequest) => void,
+  options: {
+    /**
+     * Take this long to record and answer each request, like a slow or loaded server. A request that
+     * outlives the test that made it is then recorded late, inside a later test's counting window,
+     * which is how such leaks show up. Requests the gateway has answered are still recorded first.
+     */
+    acceptDelayMs?: number
+  } = {}
 ): Promise<MockUpstream> {
   const requests: RecordedRequest[] = []
   const server: Server = createServer((req, res) => {
@@ -279,8 +319,12 @@ export async function startUpstream(
     req.on('data', (c: Buffer) => chunks.push(c))
     req.on('end', () => {
       const recorded = { method: req.method!, url: req.url!, headers: req.headers, body: Buffer.concat(chunks).toString() }
-      requests.push(recorded)
-      handler(req, res, recorded)
+      const accept = () => {
+        requests.push(recorded)
+        handler(req, res, recorded)
+      }
+      if (options.acceptDelayMs) setTimeout(accept, options.acceptDelayMs)
+      else accept()
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))

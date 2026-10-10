@@ -5,19 +5,23 @@ import type { Redis } from 'ioredis'
 import { LastUsedTracker } from './auth/last-used.js'
 import { SafeRedis } from './cache/safe-redis.js'
 import type { AppConfig } from './config.js'
+import { CallLogger, type LogSink } from './logging/index.js'
 import { ValidatorCache } from './mcp/call-tool.js'
+import { RateLimiter } from './ratelimit/limiter.js'
 import { registerMcpRoutes, rpcError } from './routes/mcp.js'
 
 export interface AppDeps {
   db: PrismaClient
   redis: Redis
   config: AppConfig
+  /** Where call events go. Flushed and closed when the app closes. */
+  logSink: LogSink
   logger?: FastifyServerOptions['logger']
 }
 
 const MAX_BODY_BYTES = 1024 * 1024
 
-export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ db, redis, config, logSink, logger }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     // Never log credentials, even if a future serializer starts including headers.
     logger: logger ?? { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie'] },
@@ -28,7 +32,7 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
     origin: true,
     methods: ['POST', 'GET', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['authorization', 'content-type', 'accept', 'mcp-protocol-version', 'mcp-session-id', 'last-event-id'],
-    exposedHeaders: ['mcp-session-id', 'www-authenticate'],
+    exposedHeaders: ['mcp-session-id', 'www-authenticate', 'retry-after', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset'],
   })
 
   // Parse and size errors on the MCP endpoint are answered in JSON-RPC, like everything else there.
@@ -50,7 +54,20 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
   const validators = new ValidatorCache()
   const lastUsed = new LastUsedTracker(db, config.lastUsedIntervalMs, log)
 
-  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed })
+  const rateLimiter = new RateLimiter(redis, log, {
+    windowMs: config.rateLimitWindowMs,
+    breakerMs: config.rateLimitBreakerMs,
+    ...(config.rateLimitNow ? { now: config.rateLimitNow } : {}),
+  })
+
+  const callLog = new CallLogger(logSink, log)
+  // Runs after in-flight requests have finished (so their events are in the buffer) and before the
+  // caller closes Redis and Postgres.
+  app.addHook('onClose', async () => {
+    await logSink.close()
+  })
+
+  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter, callLog })
 
   app.get('/health', async (_req, reply) => {
     const status: Record<string, string> = {}

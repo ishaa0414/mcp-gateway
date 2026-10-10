@@ -27,7 +27,7 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - **Phase 0: Foundation** ✅ Done (merged to main)
 - **Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** ✅ Done (merged to main)
 - **Phase 2: Hosted MCP Server** ✅ Implemented on `phase-2-mcp-gateway`, awaiting review (not merged)
-- **Phase 3: Rate Limiting and Logging** — future
+- **Phase 3: Rate Limiting and Logging** ✅ Implemented on `phase-3-rate-limit-logging`, awaiting review (not merged)
 - **Phase 4: Analytics Dashboard** — future
 - **Phase 5: Playground, Polish, Deploy** — future
 
@@ -40,6 +40,7 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - If a requirement in the spec is unclear or conflicts with how the current MCP SDK works, stop and ask instead of guessing.
 - Never weaken a security requirement to make something work.
 - Never delete or modify files outside the repo without asking the user first (home folder, temp folders, tool config such as `~/.mcp-inspector`, other projects).
+- Ask before starting, stopping or restarting Docker Desktop, containers or other system services, and before building or running images. Cleaning up afterwards does not make it okay to skip asking. If Docker or a service is down and the tests need it, say so and ask.
 - The Bash tool on Windows is Git Bash: write paths with forward slashes (`D:/mcp-gateway/...`) or quote them. An unquoted `D:\mcp-gateway\apps` loses its backslashes and creates a stray folder literally named `D:mcp-gatewayapps`.
 
 Always read docs/SPEC.md before starting any phase.

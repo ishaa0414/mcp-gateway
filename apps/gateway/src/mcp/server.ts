@@ -2,6 +2,7 @@ import { createMcpHandler, ProtocolError, Server } from '@modelcontextprotocol/s
 import type { Tool } from '@modelcontextprotocol/server'
 import type { ProjectConfig } from '../cache/project-config.js'
 import type { AppConfig, Logger } from '../config.js'
+import type { CallLogger } from '../logging/call-logger.js'
 import { annotationsForMethod } from './annotations.js'
 import { executeTool, type ValidatorCache } from './call-tool.js'
 
@@ -15,6 +16,7 @@ export interface McpDeps {
   config: AppConfig
   log: Logger
   validators: ValidatorCache
+  callLog: CallLogger
 }
 
 const INVALID_PARAMS = -32602
@@ -39,21 +41,44 @@ function buildServer({ project, apiKeyId }: McpPrincipal, deps: McpDeps): Server
 
   server.setRequestHandler('tools/call', async (request) => {
     const { name, arguments: args } = request.params
+    const started = performance.now()
+    const record = { projectId: project.projectId, apiKeyId, toolName: name, args }
 
     // Only enabled, non-removed tools are loaded, so a disabled tool is simply unknown.
     const tool = project.tools.find((t) => t.name === name)
-    if (!tool) throw new ProtocolError(INVALID_PARAMS, `Unknown tool: ${name}`)
+    if (!tool) {
+      deps.callLog.toolCall({ ...record, latencyMs: performance.now() - started, success: false, errorClass: 'UNKNOWN_TOOL', errorMessage: 'Unknown tool' })
+      throw new ProtocolError(INVALID_PARAMS, `Unknown tool: ${name}`)
+    }
 
-    const started = performance.now()
-    const outcome = await executeTool(project, tool, args, deps)
+    let outcome
+    try {
+      outcome = await executeTool(project, tool, args, deps)
+    } catch (err) {
+      deps.callLog.toolCall({ ...record, tool, latencyMs: performance.now() - started, success: false, errorClass: 'INTERNAL', errorMessage: 'Internal error' })
+      throw err
+    }
+
+    const latencyMs = performance.now() - started
+    const success = outcome.result.isError !== true
+    deps.callLog.toolCall({
+      ...record,
+      tool,
+      latencyMs,
+      success,
+      errorClass: outcome.errorClass,
+      errorMessage: outcome.errorMessage,
+      upstreamStatus: outcome.upstreamStatus,
+      responseBytes: outcome.responseBytes,
+    })
     deps.log.info(
       {
         projectId: project.projectId,
         apiKeyId,
         tool: tool.name,
         upstreamStatus: outcome.upstreamStatus,
-        isError: outcome.result.isError === true,
-        latencyMs: Math.round(performance.now() - started),
+        isError: !success,
+        latencyMs: Math.round(latencyMs),
       },
       'tool call'
     )

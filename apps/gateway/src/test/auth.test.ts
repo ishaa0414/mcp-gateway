@@ -1,5 +1,5 @@
 import { db } from '@mcp-gateway/db'
-import { invalidateApiKey } from '@mcp-gateway/shared'
+import { apiKeyCacheKey, invalidateApiKey } from '@mcp-gateway/shared'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   addApiKey,
@@ -147,19 +147,26 @@ describe('revocation', () => {
   })
 
   it('is bounded by the cache TTL even if invalidation never arrives', async () => {
-    const shortLived = await startGateway({ config: { apiKeyCacheTtlSeconds: 1 } })
+    // No sleeping: a short real TTL makes the test depend on how fast the machine is (a slow
+    // database write between the steps lets the entry expire early). Instead check that the
+    // entry is written with the configured expiry, and drop it the way Redis does when it expires.
+    const cached = await startGateway({ config: { apiKeyCacheTtlSeconds: 7 } })
     try {
       const key = await addApiKey(fx.projectId)
-      expect((await list(fx.slug, key.key, undefined, shortLived)).status).toBe(200)
+      expect((await list(fx.slug, key.key, undefined, cached)).status).toBe(200)
+
+      const ttlMs = await cached.redis.pttl(apiKeyCacheKey(key.hash))
+      expect(ttlMs).toBeGreaterThan(0)
+      expect(ttlMs).toBeLessThanOrEqual(7_000)
 
       await db.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } })
-      // Still cached, so still accepted for the moment: this is the documented worst case.
-      expect((await list(fx.slug, key.key, undefined, shortLived)).status).toBe(200)
+      // Still cached, so still accepted until the entry expires: this is the documented worst case.
+      expect((await list(fx.slug, key.key, undefined, cached)).status).toBe(200)
 
-      await new Promise((r) => setTimeout(r, 1300))
-      expect((await list(fx.slug, key.key, undefined, shortLived)).status).toBe(401)
+      await cached.redis.del(apiKeyCacheKey(key.hash)) // what expiry does
+      expect((await list(fx.slug, key.key, undefined, cached)).status).toBe(401)
     } finally {
-      await shortLived.close()
+      await cached.close()
     }
   })
 

@@ -20,5 +20,11 @@ export type { SsrfFetchOptions, SsrfResponse } from './ssrf-fetch.js'
 export { validateEnv, EnvValidationError } from './env.js'
 export type { ValidateEnvOptions } from './env.js'
 
-export { projectConfigKey, apiKeyCacheKey, invalidateProjectConfig, invalidateApiKey } from './cache-keys.js'
+export { projectConfigKey, apiKeyCacheKey, rateLimitKey, invalidateProjectConfig, invalidateApiKey } from './cache-keys.js'
 export type { RedisLike } from './cache-keys.js'
+
+export { logEventSchema, logBatchSchema, sanitizeErrorMessage, LOG_ERROR_CLASSES, LOG_QUEUE_NAME, DEFAULT_LOG_RETENTION_DAYS, ERROR_MESSAGE_MAX_CHARS } from './log-event.js'
+export type { LogEvent, LogErrorClass } from './log-event.js'
+
+export { maskArguments, isSensitiveKey, MASK, DEFAULT_MASK_LIMITS } from './mask.js'
+export type { MaskLimits, MaskResult } from './mask.js'

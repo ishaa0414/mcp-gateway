@@ -6,8 +6,10 @@
 #
 # Everything is configured through environment variables; there is no config file. Required:
 #   DATABASE_URL, REDIS_URL, ENCRYPTION_KEY (64 hex characters)
-# Optional: PORT / GATEWAY_PORT (default 4000), DATABASE_POOL_MAX, TOOL_CALL_TIMEOUT_MS,
-#   TOOL_RESPONSE_MAX_BYTES, CONFIG_CACHE_TTL_SECONDS, API_KEY_CACHE_TTL_SECONDS. See .env.example.
+# Optional: PORT / GATEWAY_PORT (default 4000), HOST (default 0.0.0.0 here, because NODE_ENV=production), DATABASE_POOL_MAX, TOOL_CALL_TIMEOUT_MS,
+#   TOOL_RESPONSE_MAX_BYTES, CONFIG_CACHE_TTL_SECONDS, API_KEY_CACHE_TTL_SECONDS, and the call-log settings
+#   LOG_SINK (set `direct` when no worker runs), LOG_RETENTION_DAYS, LOG_BUFFER_MAX, LOG_BATCH_SIZE,
+#   LOG_FLUSH_INTERVAL_MS, LOG_SHUTDOWN_FLUSH_MS. See .env.example.
 # The image does not run database migrations; apply them with `pnpm db:migrate:deploy`.
 
 ARG NODE_VERSION=22

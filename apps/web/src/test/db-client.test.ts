@@ -24,13 +24,30 @@ describe.each(['production', 'development'])('db client (NODE_ENV=%s)', (nodeEnv
   })
 
   it('runs an interactive transaction end to end', async () => {
+    // Not "two counts agree": other test files insert users into this database at the same time,
+    // and a read-committed transaction is allowed to see them. This checks what the old bug broke:
+    // every statement of the transaction runs on one connection of one client.
     const db = await freshDb()
-    const counts = await db.$transaction(async (tx) => {
-      const a = await tx.user.count()
-      const b = await tx.user.count()
-      return [a, b]
-    })
-    expect(counts[0]).toBe(counts[1])
-    await db.$disconnect()
+    const email = `tx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}@test.local`
+    try {
+      const seenInside = await db.$transaction(async (tx) => {
+        const created = await tx.user.create({ data: { email } })
+        return tx.user.findUnique({ where: { id: created.id } })
+      })
+      expect(seenInside?.email).toBe(email)
+      expect(await db.user.findUnique({ where: { email } })).not.toBeNull() // committed
+
+      const rolledBack = `rb-${email}`
+      await expect(
+        db.$transaction(async (tx) => {
+          await tx.user.create({ data: { email: rolledBack } })
+          throw new Error('abort')
+        })
+      ).rejects.toThrow('abort')
+      expect(await db.user.findUnique({ where: { email: rolledBack } })).toBeNull() // rolled back
+    } finally {
+      await db.user.deleteMany({ where: { email: { in: [email, `rb-${email}`] } } })
+      await db.$disconnect()
+    }
   })
 })

@@ -5,6 +5,7 @@ import { env } from './env.js'
 import { db } from '@mcp-gateway/db'
 import { Redis } from 'ioredis'
 import { buildApp } from './app.js'
+import { createLogSink, describeLogSettings, type LogSettings } from './logging/index.js'
 
 // Fail fast on Redis problems: a cache miss is cheaper than a request that waits.
 const redis = new Redis(env.REDIS_URL, {
@@ -16,9 +17,29 @@ const redis = new Redis(env.REDIS_URL, {
 })
 redis.on('error', () => undefined) // reported by the cache wrapper and /health; do not crash on it
 
+// The app's own logger does not exist yet; the sink needs one to report problems.
+const bootLog = {
+  info: (obj: object, msg?: string) => console.log('[gateway]', msg ?? '', JSON.stringify(obj)),
+  warn: (obj: object, msg?: string) => console.warn('[gateway]', msg ?? '', JSON.stringify(obj)),
+  error: (obj: object, msg?: string) => console.error('[gateway]', msg ?? '', JSON.stringify(obj)),
+}
+
+const logSettings: LogSettings = {
+  sink: env.LOG_SINK,
+  redisUrl: env.REDIS_URL,
+  bufferMax: env.LOG_BUFFER_MAX,
+  batchSize: env.LOG_BATCH_SIZE,
+  flushIntervalMs: env.LOG_FLUSH_INTERVAL_MS,
+  shutdownFlushMs: env.LOG_SHUTDOWN_FLUSH_MS,
+  retentionDays: env.LOG_RETENTION_DAYS,
+}
+console.log(`[gateway] ${describeLogSettings(logSettings)}`)
+const logSink = await createLogSink(logSettings, { log: bootLog, db })
+
 const app = await buildApp({
   db,
   redis,
+  logSink,
   config: {
     encryptionKey: env.ENCRYPTION_KEY,
     toolTimeoutMs: env.TOOL_CALL_TIMEOUT_MS,
@@ -26,6 +47,8 @@ const app = await buildApp({
     configCacheTtlSeconds: env.CONFIG_CACHE_TTL_SECONDS,
     apiKeyCacheTtlSeconds: env.API_KEY_CACHE_TTL_SECONDS,
     lastUsedIntervalMs: 5 * 60 * 1000,
+    rateLimitWindowMs: 60_000,
+    rateLimitBreakerMs: 5_000,
   },
 })
 
@@ -52,7 +75,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 }
 
 try {
-  await app.listen({ port: env.port, host: '0.0.0.0' })
+  await app.listen({ port: env.port, host: env.host })
 } catch (err) {
   app.log.error(err)
   process.exit(1)
