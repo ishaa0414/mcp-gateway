@@ -12,6 +12,9 @@ export const ROOT_ENV_PATH = resolve(here, '../../../.env')
 loadEnv({ path: ROOT_ENV_PATH })
 
 const schema = z.object({
+  DATABASE_URL: z.string().min(1),
+  // Cap on Postgres connections (read by @mcp-gateway/db).
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).optional(),
   REDIS_URL: z.string().min(1),
   WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(4001),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

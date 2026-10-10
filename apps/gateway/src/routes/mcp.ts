@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { lookupApiKey } from '../auth/api-key.js'
 import { parseBearerKey } from '../auth/bearer.js'
 import type { LastUsedTracker } from '../auth/last-used.js'
+import type { AuthFailureReason } from '../logging/call-logger.js'
 import { rateLimitKey } from '@mcp-gateway/shared'
 import { loadProjectConfig } from '../cache/project-config.js'
 import type { SafeRedis } from '../cache/safe-redis.js'
@@ -39,8 +40,9 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
   // Missing, malformed, unknown, revoked, or another project's key all look the same on
   // purpose, so the response never reveals which project slugs exist. The message names
   // every cause so a person reading it in a client knows what to check.
-  const unauthorized = (reply: FastifyReply) =>
-    reply
+  const unauthorized = (reply: FastifyReply, slug: string, reason: AuthFailureReason) => {
+    deps.callLog.authFailure(slug, reason)
+    return reply
       .code(401)
       .header('www-authenticate', 'Bearer realm="mcp-gateway"')
       .send(
@@ -50,19 +52,33 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
             'This server uses API keys, not OAuth.'
         )
       )
+  }
+
+  /** One sampled log row for the first `tools/call` in a rejected request. */
+  const recordRateLimited = (body: unknown, { project, apiKeyId }: McpPrincipal) => {
+    const first = (Array.isArray(body) ? body : [body]).find(
+      (m): m is { params?: { name?: unknown; arguments?: unknown } } => typeof m === 'object' && m !== null && (m as { method?: unknown }).method === 'tools/call'
+    )
+    const name = typeof first?.params?.name === 'string' ? first.params.name : ''
+    const tool = project.tools.find((t) => t.name === name)
+    deps.callLog.rateLimited({ projectId: project.projectId, apiKeyId, toolName: name, ...(tool ? { tool } : {}), args: first?.params?.arguments })
+  }
 
   app.post<{ Params: { projectSlug: string } }>('/mcp/:projectSlug', async (request, reply) => {
+    const slug = request.params.projectSlug
     const token = parseBearerKey(request.headers.authorization)
-    if (!token) return unauthorized(reply)
+    if (!token) return unauthorized(reply, slug, 'AUTH_MISSING')
 
     let principal: McpPrincipal
     let rateLimitPerMin: number
     try {
       const key = await lookupApiKey(token, deps)
-      if (!key || key.slug !== request.params.projectSlug) return unauthorized(reply)
+      if (!key) return unauthorized(reply, slug, 'AUTH_INVALID')
+      // Logged under the URL's project, without the key's id: the key belongs to another tenant.
+      if (key.slug !== slug) return unauthorized(reply, slug, 'AUTH_WRONG_PROJECT')
 
       const project = await loadProjectConfig(key.slug, deps)
-      if (!project) return unauthorized(reply)
+      if (!project) return unauthorized(reply, slug, 'AUTH_INVALID')
 
       deps.lastUsed.touch(key.id)
       principal = { project, apiKeyId: key.id }
@@ -78,6 +94,7 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
     if (count > 0) {
       const decision = await deps.rateLimiter.check(rateLimitKey(principal.apiKeyId), rateLimitPerMin, count)
       if (!decision.allowed) {
+        recordRateLimited(request.body, principal)
         const windowSeconds = deps.config.rateLimitWindowMs / 1000
         return reply
           .code(429)

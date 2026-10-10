@@ -61,6 +61,12 @@ export const logEventSchema = z
 
 export type LogEvent = z.infer<typeof logEventSchema>
 
+/** BullMQ queue the gateway writes batches to and the worker reads (queue mode). */
+export const LOG_QUEUE_NAME = 'tool-call-logs'
+
+/** One queue job: a batch of events. Items are validated one by one by the writer, so one bad event cannot sink the rest. */
+export const logBatchSchema = z.object({ events: z.array(z.unknown()).max(1000) })
+
 const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S*|(?:^|\s)\/\/[^\s/]+\S*/gi
 const QUERY_STRING = /\?\S*/g
 

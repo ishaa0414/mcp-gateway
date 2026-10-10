@@ -23,7 +23,7 @@ export type { ValidateEnvOptions } from './env.js'
 export { projectConfigKey, apiKeyCacheKey, rateLimitKey, invalidateProjectConfig, invalidateApiKey } from './cache-keys.js'
 export type { RedisLike } from './cache-keys.js'
 
-export { logEventSchema, sanitizeErrorMessage, LOG_ERROR_CLASSES, ERROR_MESSAGE_MAX_CHARS } from './log-event.js'
+export { logEventSchema, logBatchSchema, sanitizeErrorMessage, LOG_ERROR_CLASSES, LOG_QUEUE_NAME, ERROR_MESSAGE_MAX_CHARS } from './log-event.js'
 export type { LogEvent, LogErrorClass } from './log-event.js'
 
 export { maskArguments, isSensitiveKey, MASK, DEFAULT_MASK_LIMITS } from './mask.js'

@@ -23,6 +23,18 @@ export const gatewayEnvSchema = z
     TOOL_RESPONSE_MAX_BYTES: z.coerce.number().int().min(1024).max(10 * 1024 * 1024).default(1024 * 1024),
     CONFIG_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
     API_KEY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),
+    // Call logging. `queue`: batches go to BullMQ and the worker writes them to Postgres.
+    LOG_SINK: z.enum(['queue']).default('queue'),
+    // Most events held in memory; when full, new ones are dropped and counted.
+    LOG_BUFFER_MAX: z.coerce.number().int().min(10).max(100_000).default(1_000),
+    LOG_BATCH_SIZE: z.coerce.number().int().min(1).max(1_000).default(100),
+    LOG_FLUSH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(2_000),
+    // How long shutdown keeps trying to write what is still buffered.
+    LOG_SHUTDOWN_FLUSH_MS: z.coerce.number().int().min(0).max(30_000).default(5_000),
+  })
+  .refine((e) => e.LOG_BATCH_SIZE <= e.LOG_BUFFER_MAX, {
+    message: 'LOG_BATCH_SIZE must not exceed LOG_BUFFER_MAX',
+    path: ['LOG_BATCH_SIZE'],
   })
   .refine((e) => !(e.NODE_ENV === 'production' && e.ALLOW_PRIVATE_UPSTREAMS), {
     message: 'ALLOW_PRIVATE_UPSTREAMS must not be true in production',

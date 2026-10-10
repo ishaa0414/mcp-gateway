@@ -24,7 +24,8 @@ describe('logEventSchema', () => {
   })
 
   it('accepts an auth failure that only knows the slug', () => {
-    const { projectId: _omit, ...rest } = valid
+    const rest: Record<string, unknown> = { ...valid }
+    delete rest['projectId']
     const event = { ...rest, kind: 'AUTH_FAILURE', projectSlug: 'petstore', apiKeyId: null, toolId: null, toolName: null, input: {}, upstreamStatus: null, success: false, errorClass: 'AUTH_INVALID' }
     expect(logEventSchema.parse(event)).toMatchObject({ kind: 'AUTH_FAILURE', projectSlug: 'petstore' })
   })
@@ -34,7 +35,8 @@ describe('logEventSchema', () => {
   })
 
   it('needs a projectId or a projectSlug', () => {
-    const { projectId: _omit, ...rest } = valid
+    const rest: Record<string, unknown> = { ...valid }
+    delete rest['projectId']
     expect(logEventSchema.safeParse(rest).success).toBe(false)
   })
 

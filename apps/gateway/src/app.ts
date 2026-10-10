@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis'
 import { LastUsedTracker } from './auth/last-used.js'
 import { SafeRedis } from './cache/safe-redis.js'
 import type { AppConfig } from './config.js'
+import { CallLogger, type LogSink } from './logging/index.js'
 import { ValidatorCache } from './mcp/call-tool.js'
 import { RateLimiter } from './ratelimit/limiter.js'
 import { registerMcpRoutes, rpcError } from './routes/mcp.js'
@@ -13,12 +14,14 @@ export interface AppDeps {
   db: PrismaClient
   redis: Redis
   config: AppConfig
+  /** Where call events go. Flushed and closed when the app closes. */
+  logSink: LogSink
   logger?: FastifyServerOptions['logger']
 }
 
 const MAX_BODY_BYTES = 1024 * 1024
 
-export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ db, redis, config, logSink, logger }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     // Never log credentials, even if a future serializer starts including headers.
     logger: logger ?? { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie'] },
@@ -57,7 +60,14 @@ export async function buildApp({ db, redis, config, logger }: AppDeps): Promise<
     ...(config.rateLimitNow ? { now: config.rateLimitNow } : {}),
   })
 
-  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter })
+  const callLog = new CallLogger(logSink, log)
+  // Runs after in-flight requests have finished (so their events are in the buffer) and before the
+  // caller closes Redis and Postgres.
+  app.addHook('onClose', async () => {
+    await logSink.close()
+  })
+
+  registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter, callLog })
 
   app.get('/health', async (_req, reply) => {
     const status: Record<string, string> = {}

@@ -12,8 +12,10 @@ import { extractTools } from '@mcp-gateway/openapi-tools'
 import { Client as ClientV2, StreamableHTTPClientTransport as TransportV2 } from '@modelcontextprotocol/client'
 import { Client as ClientV1 } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport as TransportV1 } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { LogEvent } from '@mcp-gateway/shared'
 import { Redis } from 'ioredis'
 import { buildApp } from '../app.js'
+import type { LogSink } from '../logging/index.js'
 import type { AppConfig } from '../config.js'
 
 export const ENCRYPTION_KEY = 'ab'.repeat(32)
@@ -229,7 +231,21 @@ export async function cleanupFixtures(): Promise<void> {
 // The gateway under test
 // ---------------------------------------------------------------------------
 
+/** Keeps events in memory so a test can look at what the gateway logged. */
+export class CollectingSink implements LogSink {
+  readonly events: LogEvent[] = []
+  closed = false
+  enqueue(event: LogEvent): void {
+    this.events.push(event)
+  }
+  async close(): Promise<void> {
+    this.closed = true
+  }
+}
+
 export interface RunningGateway {
+  /** The sink the gateway logs to (an in-memory CollectingSink unless the test supplied its own). */
+  logSink: LogSink
   baseUrl: string
   redis: Redis
   mcpUrl(slug: string): string
@@ -239,7 +255,7 @@ export interface RunningGateway {
 // GATEWAY_TEST_LOG=1 prints the gateway's warnings during a test run (Redis failures, fail-open limiting).
 const testLogger = () => (process.env['GATEWAY_TEST_LOG'] ? { level: 'warn' } : false)
 
-export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string } = {}): Promise<RunningGateway> {
+export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string; logSink?: LogSink } = {}): Promise<RunningGateway> {
   const redis = new Redis(options.redisUrl ?? process.env['REDIS_URL_TEST'] ?? 'redis://localhost:6379/1', {
     maxRetriesPerRequest: 1,
     connectTimeout: 1_000,
@@ -252,11 +268,13 @@ export async function startGateway(options: { config?: Partial<AppConfig>; redis
   redis.on('error', () => undefined)
   await redis.connect().catch(() => undefined)
 
-  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logger: testLogger() })
+  const logSink = options.logSink ?? new CollectingSink()
+  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logSink, logger: testLogger() })
   await app.listen({ port: 0, host: '127.0.0.1' })
   const baseUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
 
   return {
+    logSink,
     baseUrl,
     redis,
     mcpUrl: (slug) => `${baseUrl}/mcp/${slug}`,

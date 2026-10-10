@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@mcp-gateway/db": "workspace:*",
     "@mcp-gateway/shared": "workspace:*",
     "bullmq": "^6.3.11",
     "dotenv": "^16.4.0",

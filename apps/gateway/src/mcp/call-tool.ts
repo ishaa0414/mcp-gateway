@@ -1,8 +1,8 @@
 import { STATUS_CODES } from 'node:http'
 import { decrypt } from '@mcp-gateway/crypto'
 import { buildRequest, RequestBuildError } from '@mcp-gateway/openapi-tools'
-import { ssrfFetch, SsrfError } from '@mcp-gateway/shared'
-import type { SsrfResponse } from '@mcp-gateway/shared'
+import { sanitizeErrorMessage, ssrfFetch, SsrfError } from '@mcp-gateway/shared'
+import type { LogErrorClass, SsrfResponse } from '@mcp-gateway/shared'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
 import type { CachedTool, ProjectConfig } from '../cache/project-config.js'
@@ -34,6 +34,15 @@ export interface ToolOutcome {
   result: CallToolResult
   /** HTTP status of the upstream response, when one was received. */
   upstreamStatus?: number
+  /** Set on every failure; what the call log records. */
+  errorClass?: LogErrorClass
+  /**
+   * The failure as it may be stored: the first line of the fixed wording only, never the
+   * upstream's own text, the request URL or a redirect target (see sanitizeErrorMessage).
+   */
+  errorMessage?: string
+  /** Size of the upstream response body, when one was received. */
+  responseBytes?: number
 }
 
 interface Deps {
@@ -44,14 +53,17 @@ interface Deps {
 
 const ERROR_EXCERPT_CHARS = 2000
 
-const fail = (text: string, upstreamStatus?: number): ToolOutcome => ({
+const fail = (text: string, errorClass: LogErrorClass, upstream?: { status: number; bytes: number }): ToolOutcome => ({
   result: { isError: true, content: [{ type: 'text', text }] },
-  ...(upstreamStatus !== undefined ? { upstreamStatus } : {}),
+  errorClass,
+  errorMessage: sanitizeErrorMessage(text),
+  ...(upstream ? { upstreamStatus: upstream.status, responseBytes: upstream.bytes } : {}),
 })
 
-const ok = (text: string, upstreamStatus: number): ToolOutcome => ({
+const ok = (text: string, upstreamStatus: number, bytes: number): ToolOutcome => ({
   result: { content: [{ type: 'text', text }] },
   upstreamStatus,
+  responseBytes: bytes,
 })
 
 function isTextual(contentType: string | undefined, body: Buffer): boolean {
@@ -85,31 +97,52 @@ function describeSsrfError(err: SsrfError, config: AppConfig): string {
   }
 }
 
+function classOfSsrfError(err: SsrfError): LogErrorClass {
+  switch (err.code) {
+    case 'BLOCKED':
+      return 'BLOCKED'
+    case 'TIMEOUT':
+      return 'TIMEOUT'
+    case 'TOO_LARGE':
+      return 'TOO_LARGE'
+    case 'REDIRECT':
+      return 'REDIRECT'
+    case 'INVALID_REQUEST':
+      return 'REQUEST_BUILD'
+    default:
+      return 'UNREACHABLE'
+  }
+}
+
 function formatResponse(res: SsrfResponse, secrets: string[]): ToolOutcome {
   const status = res.status
   const contentType = res.headers['content-type']
   const textual = isTextual(contentType, res.body)
 
+  const upstream = { status, bytes: res.body.length }
+
   if (status >= 300 && status < 400) {
     return fail(
       `The upstream API answered with a redirect (HTTP ${status}). The gateway does not follow redirects; check the upstream base URL.`,
-      status
+      'REDIRECT',
+      upstream
     )
   }
 
   if (status >= 400) {
     const label = `The upstream API returned HTTP ${status}${STATUS_CODES[status] ? ` ${STATUS_CODES[status]}` : ''}.`
-    if (res.body.length === 0 || !textual) return fail(label, status)
+    const errorClass = status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
+    if (res.body.length === 0 || !textual) return fail(label, errorClass, upstream)
     const body = redactSecrets(res.text(), secrets)
     const excerpt = body.length > ERROR_EXCERPT_CHARS ? `${body.slice(0, ERROR_EXCERPT_CHARS)}… [truncated]` : body
-    return fail(`${label}\n${excerpt}`, status)
+    return fail(`${label}\n${excerpt}`, errorClass, upstream)
   }
 
-  if (res.body.length === 0) return ok(`OK (HTTP ${status}, empty response)`, status)
+  if (res.body.length === 0) return ok(`OK (HTTP ${status}, empty response)`, status, 0)
   if (!textual) {
-    return ok(`HTTP ${status}: the response is binary (${contentType ?? 'unknown type'}, ${res.body.length} bytes) and cannot be shown as text.`, status)
+    return ok(`HTTP ${status}: the response is binary (${contentType ?? 'unknown type'}, ${res.body.length} bytes) and cannot be shown as text.`, status, res.body.length)
   }
-  return ok(redactSecrets(res.text(), secrets), status)
+  return ok(redactSecrets(res.text(), secrets), status, res.body.length)
 }
 
 /**
@@ -127,10 +160,10 @@ export async function executeTool(
   { config, log, validators }: Deps
 ): Promise<ToolOutcome> {
   const check = validators.get(tool)(rawArgs ?? {})
-  if (!check.valid) return fail(`Invalid arguments for "${tool.name}": ${check.errorMessage}`)
+  if (!check.valid) return fail(`Invalid arguments for "${tool.name}": ${check.errorMessage}`, 'VALIDATION')
 
   if (!project.upstreamBaseUrl) {
-    return fail('This project has no upstream base URL configured, so the tool cannot call the API.')
+    return fail('This project has no upstream base URL configured, so the tool cannot call the API.', 'NO_BASE_URL')
   }
 
   let built
@@ -145,7 +178,7 @@ export async function executeTool(
       args: { ...(check.data as Record<string, unknown>), ...tool.hidden },
     })
   } catch (err) {
-    if (err instanceof RequestBuildError) return fail(err.message)
+    if (err instanceof RequestBuildError) return fail(err.message, 'REQUEST_BUILD')
     throw err
   }
 
@@ -161,7 +194,7 @@ export async function executeTool(
       secret = decrypt(credential.encryptedValue, config.encryptionKey)
     } catch (err) {
       log.error({ projectId: project.projectId, err: err instanceof Error ? err.message : String(err) }, 'could not decrypt the upstream credential')
-      return fail('The upstream credential could not be loaded. Re-enter it in the project settings.')
+      return fail('The upstream credential could not be loaded. Re-enter it in the project settings.', 'CREDENTIAL')
     }
     secrets.push(secret)
 
@@ -183,10 +216,10 @@ export async function executeTool(
   } catch (err) {
     if (err instanceof SsrfError) {
       log.warn({ projectId: project.projectId, tool: tool.name, code: err.code }, 'upstream call refused or failed')
-      return fail(describeSsrfError(err, config))
+      return fail(describeSsrfError(err, config), classOfSsrfError(err))
     }
     const code = (err as { code?: string } | null)?.code
     log.warn({ projectId: project.projectId, tool: tool.name, code }, 'upstream call failed')
-    return fail('Could not reach the upstream API.')
+    return fail('Could not reach the upstream API.', 'UNREACHABLE')
   }
 }

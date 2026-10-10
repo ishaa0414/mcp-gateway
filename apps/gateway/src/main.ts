@@ -5,6 +5,7 @@ import { env } from './env.js'
 import { db } from '@mcp-gateway/db'
 import { Redis } from 'ioredis'
 import { buildApp } from './app.js'
+import { createLogSink } from './logging/index.js'
 
 // Fail fast on Redis problems: a cache miss is cheaper than a request that waits.
 const redis = new Redis(env.REDIS_URL, {
@@ -16,9 +17,29 @@ const redis = new Redis(env.REDIS_URL, {
 })
 redis.on('error', () => undefined) // reported by the cache wrapper and /health; do not crash on it
 
+// The app's own logger does not exist yet; the sink needs one to report problems.
+const bootLog = {
+  info: (obj: object, msg?: string) => console.log('[gateway]', msg ?? '', JSON.stringify(obj)),
+  warn: (obj: object, msg?: string) => console.warn('[gateway]', msg ?? '', JSON.stringify(obj)),
+  error: (obj: object, msg?: string) => console.error('[gateway]', msg ?? '', JSON.stringify(obj)),
+}
+
+const logSink = await createLogSink(
+  {
+    sink: env.LOG_SINK,
+    redisUrl: env.REDIS_URL,
+    bufferMax: env.LOG_BUFFER_MAX,
+    batchSize: env.LOG_BATCH_SIZE,
+    flushIntervalMs: env.LOG_FLUSH_INTERVAL_MS,
+    shutdownFlushMs: env.LOG_SHUTDOWN_FLUSH_MS,
+  },
+  bootLog
+)
+
 const app = await buildApp({
   db,
   redis,
+  logSink,
   config: {
     encryptionKey: env.ENCRYPTION_KEY,
     toolTimeoutMs: env.TOOL_CALL_TIMEOUT_MS,
