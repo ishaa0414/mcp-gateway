@@ -5,7 +5,7 @@ import { env } from './env.js'
 import { db } from '@mcp-gateway/db'
 import { Redis } from 'ioredis'
 import { buildApp } from './app.js'
-import { createLogSink } from './logging/index.js'
+import { createLogSink, describeLogSettings, type LogSettings } from './logging/index.js'
 
 // Fail fast on Redis problems: a cache miss is cheaper than a request that waits.
 const redis = new Redis(env.REDIS_URL, {
@@ -24,18 +24,17 @@ const bootLog = {
   error: (obj: object, msg?: string) => console.error('[gateway]', msg ?? '', JSON.stringify(obj)),
 }
 
-const logSink = await createLogSink(
-  {
-    sink: env.LOG_SINK,
-    redisUrl: env.REDIS_URL,
-    bufferMax: env.LOG_BUFFER_MAX,
-    batchSize: env.LOG_BATCH_SIZE,
-    flushIntervalMs: env.LOG_FLUSH_INTERVAL_MS,
-    shutdownFlushMs: env.LOG_SHUTDOWN_FLUSH_MS,
-    retentionDays: env.LOG_RETENTION_DAYS,
-  },
-  { log: bootLog, db }
-)
+const logSettings: LogSettings = {
+  sink: env.LOG_SINK,
+  redisUrl: env.REDIS_URL,
+  bufferMax: env.LOG_BUFFER_MAX,
+  batchSize: env.LOG_BATCH_SIZE,
+  flushIntervalMs: env.LOG_FLUSH_INTERVAL_MS,
+  shutdownFlushMs: env.LOG_SHUTDOWN_FLUSH_MS,
+  retentionDays: env.LOG_RETENTION_DAYS,
+}
+console.log(`[gateway] ${describeLogSettings(logSettings)}`)
+const logSink = await createLogSink(logSettings, { log: bootLog, db })
 
 const app = await buildApp({
   db,

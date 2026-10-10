@@ -25,6 +25,14 @@ export interface LogSettings {
   retentionTiming?: { firstRunDelayMs: number; intervalMs: number }
 }
 
+/** One line for the startup log, so a wrong LOG_SINK is obvious from the first lines. */
+export function describeLogSettings(s: LogSettings): string {
+  const common = `batch ${s.batchSize}, every ${s.flushIntervalMs} ms, buffer ${s.bufferMax}`
+  return s.sink === 'direct'
+    ? `call logging: direct (${common}; the gateway writes to Postgres itself, keeps ${s.retentionDays} days, no worker needed)`
+    : `call logging: queue (${common}; needs the worker to write the logs, they wait in Redis until it runs)`
+}
+
 /** Build the sink the settings ask for. */
 export async function createLogSink(settings: LogSettings, { log, db }: { log: Logger; db: PrismaClient }): Promise<BufferedLogSink> {
   const common = {
