@@ -61,6 +61,9 @@ export const logEventSchema = z
 
 export type LogEvent = z.infer<typeof logEventSchema>
 
+/** How long call logs are kept unless LOG_RETENTION_DAYS says otherwise. */
+export const DEFAULT_LOG_RETENTION_DAYS = 30
+
 /** BullMQ queue the gateway writes batches to and the worker reads (queue mode). */
 export const LOG_QUEUE_NAME = 'tool-call-logs'
 

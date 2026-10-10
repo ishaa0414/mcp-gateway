@@ -32,8 +32,9 @@ const logSink = await createLogSink(
     batchSize: env.LOG_BATCH_SIZE,
     flushIntervalMs: env.LOG_FLUSH_INTERVAL_MS,
     shutdownFlushMs: env.LOG_SHUTDOWN_FLUSH_MS,
+    retentionDays: env.LOG_RETENTION_DAYS,
   },
-  bootLog
+  { log: bootLog, db }
 )
 
 const app = await buildApp({

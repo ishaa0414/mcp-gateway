@@ -45,5 +45,6 @@ export const db: PrismaClient = new Proxy({} as PrismaClient, {
 
 export { writeLogBatch } from './log-store.js'
 export type { WriteLogResult } from './log-store.js'
+export { purgeOldLogs } from './log-retention.js'
 export { PrismaClient } from './generated/client/client.js'
 export type * from './generated/client/client.js'

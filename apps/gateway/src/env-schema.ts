@@ -1,4 +1,4 @@
-import { z } from '@mcp-gateway/shared'
+import { DEFAULT_LOG_RETENTION_DAYS, z } from '@mcp-gateway/shared'
 
 const port = z.coerce.number().int().min(1).max(65535)
 
@@ -24,7 +24,11 @@ export const gatewayEnvSchema = z
     CONFIG_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
     API_KEY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),
     // Call logging. `queue`: batches go to BullMQ and the worker writes them to Postgres.
-    LOG_SINK: z.enum(['queue']).default('queue'),
+    // `direct`: the gateway writes batches to Postgres itself and needs no worker (for hosts where BullMQ's
+    // Redis polling is too expensive, such as a free Upstash plan). Deploy with `direct`.
+    LOG_SINK: z.enum(['queue', 'direct']).default('queue'),
+    // Call logs older than this are deleted: by the gateway itself in `direct` mode, by the worker in `queue` mode.
+    LOG_RETENTION_DAYS: z.coerce.number().int().min(1).max(3_650).default(DEFAULT_LOG_RETENTION_DAYS),
     // Most events held in memory; when full, new ones are dropped and counted.
     LOG_BUFFER_MAX: z.coerce.number().int().min(10).max(100_000).default(1_000),
     LOG_BATCH_SIZE: z.coerce.number().int().min(1).max(1_000).default(100),
