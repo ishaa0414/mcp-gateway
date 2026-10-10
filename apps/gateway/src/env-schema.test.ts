@@ -95,3 +95,34 @@ describe('call logging settings', () => {
     expect(!result.success && result.error.issues[0]?.path).toEqual(['LOG_BATCH_SIZE'])
   })
 })
+
+describe('bind address', () => {
+  it('defaults to loopback in development and test', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      const result = parse({ NODE_ENV })
+      expect(result.success && result.data.host).toBe('127.0.0.1')
+    }
+    const unset = parse()
+    expect(unset.success && unset.data.host).toBe('127.0.0.1') // NODE_ENV defaults to development
+  })
+
+  it('defaults to every interface in production, which a container needs', () => {
+    const result = parse({ NODE_ENV: 'production' })
+    expect(result.success && result.data.host).toBe('0.0.0.0')
+  })
+
+  it.each([
+    ['development', '0.0.0.0'],
+    ['production', '127.0.0.1'],
+    ['development', '192.168.1.20'],
+    ['production', 'localhost'],
+  ])('HOST overrides the default (%s, HOST=%s)', (NODE_ENV, HOST) => {
+    const result = parse({ NODE_ENV, HOST })
+    expect(result.success && result.data.host).toBe(HOST)
+  })
+
+  it('rejects an empty HOST', () => {
+    expect(parse({ HOST: '' }).success).toBe(false)
+  })
+})
+

@@ -75,7 +75,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 }
 
 try {
-  await app.listen({ port: env.port, host: '0.0.0.0' })
+  await app.listen({ port: env.port, host: env.host })
 } catch (err) {
   app.log.error(err)
   process.exit(1)

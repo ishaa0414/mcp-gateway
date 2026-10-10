@@ -107,7 +107,7 @@ docker run --rm -p 4000:4000 \
 
 **Call logging in a deployment without a worker.** By default the gateway sends call logs to BullMQ and `apps/worker` writes them to Postgres. A free Redis plan (Upstash) cannot afford BullMQ's polling, so for a deployment without the worker set `LOG_SINK=direct`: the gateway then writes batches to Postgres itself and deletes logs older than `LOG_RETENTION_DAYS` (default 30) on its own. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#call-logging) for the buffer settings (`LOG_BUFFER_MAX`, `LOG_BATCH_SIZE`, `LOG_FLUSH_INTERVAL_MS`, `LOG_SHUTDOWN_FLUSH_MS`) and what is lost on a hard kill.
 
-Hosting platforms that assign a port set `PORT`, which the gateway honours. The image does not run migrations (use `pnpm db:migrate:deploy` against the production database), and `ENCRYPTION_KEY` must match the dashboard's, or stored credentials cannot be decrypted. Set `GATEWAY_PUBLIC_URL` on the dashboard to the gateway's public address so the connection instructions show the right URL.
+Hosting platforms that assign a port set `PORT`, which the gateway honours. The gateway binds `127.0.0.1` in development and `0.0.0.0` when `NODE_ENV=production` (the image sets it); `HOST` overrides either. The image does not run migrations (use `pnpm db:migrate:deploy` against the production database), and `ENCRYPTION_KEY` must match the dashboard's, or stored credentials cannot be decrypted. Set `GATEWAY_PUBLIC_URL` on the dashboard to the gateway's public address so the connection instructions show the right URL.
 
 ## Project structure
 

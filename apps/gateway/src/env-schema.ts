@@ -14,6 +14,9 @@ export const gatewayEnvSchema = z
     GATEWAY_PORT: port.optional(),
     // Render, Koyeb, Fly and similar hosts tell the container which port to bind through PORT.
     PORT: port.optional(),
+    // Address to bind. Default: 127.0.0.1 outside production (not reachable from other machines on the network),
+    // 0.0.0.0 in production (the Docker image sets NODE_ENV=production, and a container must listen on all interfaces).
+    HOST: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     ALLOW_PRIVATE_UPSTREAMS: z
       .enum(['true', 'false'])
@@ -44,4 +47,8 @@ export const gatewayEnvSchema = z
     message: 'ALLOW_PRIVATE_UPSTREAMS must not be true in production',
     path: ['ALLOW_PRIVATE_UPSTREAMS'],
   })
-  .transform((e) => ({ ...e, port: e.GATEWAY_PORT ?? e.PORT ?? 4000 }))
+  .transform((e) => ({
+    ...e,
+    port: e.GATEWAY_PORT ?? e.PORT ?? 4000,
+    host: e.HOST ?? (e.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1'),
+  }))
