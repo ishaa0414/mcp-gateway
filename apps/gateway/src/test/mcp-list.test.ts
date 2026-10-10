@@ -137,6 +137,7 @@ describe('stateless endpoint', () => {
     const res = await fetch(gateway.mcpUrl(fx.slug), { method, headers: { authorization: `Bearer ${fx.apiKey}` } })
     expect(res.status).toBe(405)
     expect(res.headers.get('allow')).toBe('POST')
+    await res.text()
   })
 
   it('answers invalid JSON with a JSON-RPC parse error, not a stack trace', async () => {
@@ -156,6 +157,7 @@ describe('stateless endpoint', () => {
     })
     expect(preflight.status).toBeLessThan(300)
     expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization')
+    await preflight.text()
 
     const res = await rpc(gateway.mcpUrl(fx.slug), fx.apiKey, 'tools/list', undefined, { origin: 'https://app.example' })
     expect(res.status).toBe(200)

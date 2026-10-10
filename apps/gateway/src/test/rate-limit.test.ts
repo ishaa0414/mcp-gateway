@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { rateLimitKey } from '@mcp-gateway/shared'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
@@ -22,7 +23,9 @@ let fx: Fixture
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development')
   vi.stubEnv('ALLOW_PRIVATE_UPSTREAMS', 'true')
-  upstream = await startUpstream((_req, res) => json(res, { pets: [] }))
+  // The small accept delay makes a request that outlives its test land inside a later test's window
+  // (as on a loaded CI runner), so the tests below have to be immune to that, and are.
+  upstream = await startUpstream((_req, res) => json(res, { pets: [] }), { acceptDelayMs: 40 })
   gateway = await startGateway()
   fx = await createFixture({ upstreamBaseUrl: upstream.url })
 })
@@ -37,21 +40,29 @@ afterAll(async () => {
 /** A key of this project with its own limit, so tests never share a counter. */
 const keyWithLimit = async (limit: number) => (await addApiKey(fx.projectId, false, limit)).key
 
-const callTool = (key: string, gw = gateway, slug = fx.slug) =>
-  rpc(gw.mcpUrl(slug), key, 'tools/call', { name: 'listPets', arguments: {} })
+const callTool = (key: string, gw = gateway, slug = fx.slug, args: object = {}) =>
+  rpc(gw.mcpUrl(slug), key, 'tools/call', { name: 'listPets', arguments: args })
 
-const upstreamHits = () => upstream.requests.length
+/**
+ * A test that counts upstream calls tags them (listPets passes `tag` through as a query parameter) and
+ * counts only its own. The upstream is shared by every test in the file, so a plain count would also
+ * include a request that a previous test left in flight.
+ */
+function tagged() {
+  const tag = `t${randomUUID().slice(0, 8)}`
+  return { args: { tag: [tag] }, hits: () => upstream.requests.filter((r) => r.url.includes(`tag=${tag}`)).length }
+}
 
 describe('limit enforcement', () => {
   it('lets a key make its stored limit of tool calls, then answers 429', async () => {
     const key = await keyWithLimit(3)
-    const before = upstreamHits()
+    const t = tagged()
 
-    for (let i = 0; i < 3; i++) expect((await callTool(key)).status).toBe(200)
-    const blocked = await callTool(key)
+    for (let i = 0; i < 3; i++) expect((await callTool(key, gateway, fx.slug, t.args)).status).toBe(200)
+    const blocked = await callTool(key, gateway, fx.slug, t.args)
 
     expect(blocked.status).toBe(429)
-    expect(upstreamHits() - before).toBe(3) // the rejected call never reached the upstream
+    expect(t.hits()).toBe(3) // the rejected call never reached the upstream
   })
 
   it('uses the limit stored on each key', async () => {
@@ -90,35 +101,40 @@ describe('limit enforcement', () => {
 
   it('counts a batch once per tools/call inside it, and rejects it whole when it does not fit', async () => {
     const key = await keyWithLimit(3)
-    const call = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'listPets', arguments: {} } })
-    const post = (body: unknown) =>
-      fetch(gateway.mcpUrl(fx.slug), {
+    const t = tagged()
+    const call = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'listPets', arguments: t.args } })
+    // Reads the whole body before returning. The reply is an event stream whose headers can arrive before the
+    // tool calls have reached the upstream, so a response that is not read leaves requests running past the test.
+    const post = async (body: unknown) => {
+      const res = await fetch(gateway.mcpUrl(fx.slug), {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${key}` },
         body: JSON.stringify(body),
       })
-    const before = upstreamHits()
+      return { status: res.status, headers: res.headers, text: await res.text() }
+    }
 
     const tooBig = await post([call(1), call(2), call(3), call(4)])
     expect(tooBig.status).toBe(429)
-    expect(((await tooBig.json()) as { id: unknown }).id).toBe(1)
-    expect(upstreamHits()).toBe(before)
+    expect((JSON.parse(tooBig.text) as { id: unknown }).id).toBe(1)
+    expect(t.hits()).toBe(0)
 
     const fits = await post([call(1), { jsonrpc: '2.0', id: 2, method: 'tools/list' }, call(3)])
     expect(fits.status).not.toBe(429)
     expect(fits.headers.get('ratelimit-remaining')).toBe('1') // two of three used
+    expect(t.hits()).toBe(2) // both calls have reached the upstream by the time the reply is complete
   })
 
   it('is exact when many requests arrive at once', async () => {
     const key = await keyWithLimit(10)
-    const before = upstreamHits()
+    const t = tagged()
 
-    const responses = await Promise.all(Array.from({ length: 40 }, () => callTool(key)))
+    const responses = await Promise.all(Array.from({ length: 40 }, () => callTool(key, gateway, fx.slug, t.args)))
     const statuses = responses.map((r) => r.status)
 
     expect(statuses.filter((s) => s === 200)).toHaveLength(10)
     expect(statuses.filter((s) => s === 429)).toHaveLength(30)
-    expect(upstreamHits() - before).toBe(10)
+    expect(t.hits()).toBe(10)
   })
 
   it('does not record rejected calls', async () => {
@@ -201,6 +217,7 @@ describe('the 429 response', () => {
   it('is exposed to browser clients through CORS', async () => {
     const res = await fetch(gateway.mcpUrl(fx.slug), { method: 'OPTIONS', headers: { origin: 'http://localhost:6274', 'access-control-request-method': 'POST' } })
     expect(res.status).toBeLessThan(300)
+    await res.text()
     const key = await keyWithLimit(1)
     await callTool(key)
     const blocked = await fetch(gateway.mcpUrl(fx.slug), {
@@ -209,6 +226,7 @@ describe('the 429 response', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'listPets', arguments: {} } }),
     })
     expect(blocked.status).toBe(429)
+    await blocked.text()
     const exposed = blocked.headers.get('access-control-expose-headers') ?? ''
     expect(exposed).toMatch(/retry-after/i)
     expect(exposed).toMatch(/ratelimit-remaining/i)
@@ -283,13 +301,13 @@ describe('Redis unavailable', () => {
     const noRedis = await startGateway({ redisUrl: 'redis://127.0.0.1:1' })
     try {
       const key = await keyWithLimit(1)
-      const before = upstreamHits()
+      const t = tagged()
 
       const statuses = []
-      for (let i = 0; i < 8; i++) statuses.push((await callTool(key, noRedis)).status)
+      for (let i = 0; i < 8; i++) statuses.push((await callTool(key, noRedis, fx.slug, t.args)).status)
 
       expect(statuses).toEqual(Array(8).fill(200))
-      expect(upstreamHits() - before).toBe(8)
+      expect(t.hits()).toBe(8)
     } finally {
       await noRedis.close()
     }

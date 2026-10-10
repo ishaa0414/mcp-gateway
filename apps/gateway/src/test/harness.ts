@@ -303,7 +303,15 @@ export interface MockUpstream {
 }
 
 export async function startUpstream(
-  handler: (req: IncomingMessage, res: ServerResponse, recorded: RecordedRequest) => void
+  handler: (req: IncomingMessage, res: ServerResponse, recorded: RecordedRequest) => void,
+  options: {
+    /**
+     * Take this long to record and answer each request, like a slow or loaded server. A request that
+     * outlives the test that made it is then recorded late, inside a later test's counting window,
+     * which is how such leaks show up. Requests the gateway has answered are still recorded first.
+     */
+    acceptDelayMs?: number
+  } = {}
 ): Promise<MockUpstream> {
   const requests: RecordedRequest[] = []
   const server: Server = createServer((req, res) => {
@@ -311,8 +319,12 @@ export async function startUpstream(
     req.on('data', (c: Buffer) => chunks.push(c))
     req.on('end', () => {
       const recorded = { method: req.method!, url: req.url!, headers: req.headers, body: Buffer.concat(chunks).toString() }
-      requests.push(recorded)
-      handler(req, res, recorded)
+      const accept = () => {
+        requests.push(recorded)
+        handler(req, res, recorded)
+      }
+      if (options.acceptDelayMs) setTimeout(accept, options.acceptDelayMs)
+      else accept()
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
