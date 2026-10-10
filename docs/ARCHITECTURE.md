@@ -118,7 +118,7 @@ request path --enqueue (sync, never throws)--> BufferedLogSink --batch--> writer
 - **Shutdown.** The sink closes in the app's `onClose` hook, after in-flight requests finished and before Redis and Postgres are disconnected. A SIGKILL or crash loses what was buffered (up to one flush interval of events); this was measured in the Linux image.
 - **Sampling.** Auth failures and rate-limit rejections come from callers who may be hostile or hammering: one row per slug or key and reason per 10 s per instance, at most 200 sampled rows per 10 s overall. Counts of those two classes are therefore "at least".
 - **Tenancy.** The writer keeps a tool or key id only if it belongs to the event's own project, and resolves a slug to a project itself; unknown slugs are dropped.
-- **Retention.** `purgeOldLogs` (`packages/db`) deletes in batches of 5000 and is idempotent. Queue mode: the worker runs it every 6 h from a BullMQ job scheduler. Direct mode: the gateway runs it once about a minute after boot and then every 6 h. A host that sleeps when idle also writes no logs while asleep, so the run at wake-up is enough. Several instances running it together is harmless.
+- **Retention.** `purgeOldLogs` (`packages/db`) deletes in batches of 5000 and is idempotent. Both modes run it once about a minute after boot (with jitter), then every 6 h. Queue mode: the worker, on an idempotent BullMQ job scheduler whose first run is delayed with `startDate`. Direct mode: the gateway, with timers. A host that sleeps when idle also writes no logs while asleep, so the run at wake-up is enough. Several instances running it together is harmless.
 
 ## Caching and invalidation
 

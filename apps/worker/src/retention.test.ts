@@ -49,7 +49,7 @@ describe('worker retention (queue mode)', () => {
     const fresh = event(2)
     await writeLogBatch(db, [old, fresh])
 
-    const retention = await startRetention(db, connection, { days: 30, everyMs: 200, queueName })
+    const retention = await startRetention(db, connection, { days: 30, everyMs: 200, firstRunDelayMs: 20, queueName })
     const inspector = new Queue(queueName, { connection })
     try {
       await vi.waitFor(async () => expect(await count(old.id)).toBe(0), { timeout: 8_000, interval: 100 })
@@ -66,12 +66,43 @@ describe('worker retention (queue mode)', () => {
     }
   })
 
+  it('purges once shortly after boot, without waiting a whole interval', async () => {
+    const queueName = `test-maintenance-${randomUUID()}`
+    const old = event(45)
+    await writeLogBatch(db, [old])
+
+    // The interval is an hour: only the first run, a moment after boot, can delete the row in time.
+    const retention = await startRetention(db, connection, { days: 30, everyMs: 3_600_000, firstRunDelayMs: 50, queueName })
+    try {
+      await vi.waitFor(async () => expect(await count(old.id)).toBe(0), { timeout: 8_000, interval: 100 })
+    } finally {
+      await retention.close()
+      await new Queue(queueName, { connection }).obliterate({ force: true }).catch(() => undefined)
+    }
+  })
+
+  it('does not purge the moment the worker starts (BullMQ would otherwise run the first job at once)', async () => {
+    const queueName = `test-maintenance-${randomUUID()}`
+    const old = event(45)
+    await writeLogBatch(db, [old])
+
+    const retention = await startRetention(db, connection, { days: 30, everyMs: 3_600_000, firstRunDelayMs: 3_600_000, queueName })
+    try {
+      await new Promise((r) => setTimeout(r, 600))
+      expect(await count(old.id)).toBe(1)
+    } finally {
+      await retention.close()
+      await new Queue(queueName, { connection }).obliterate({ force: true }).catch(() => undefined)
+      await db.toolCallLog.delete({ where: { id: old.id } })
+    }
+  })
+
   it('uses the configured number of days', async () => {
     const queueName = `test-maintenance-${randomUUID()}`
     const tenDays = event(10)
     await writeLogBatch(db, [tenDays])
 
-    const retention = await startRetention(db, connection, { days: 7, everyMs: 200, queueName })
+    const retention = await startRetention(db, connection, { days: 7, everyMs: 200, firstRunDelayMs: 20, queueName })
     try {
       await vi.waitFor(async () => expect(await count(tenDays.id)).toBe(0), { timeout: 8_000, interval: 100 })
     } finally {
