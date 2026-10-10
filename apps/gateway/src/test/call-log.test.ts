@@ -216,6 +216,26 @@ describe('auth failures', () => {
     expect(logged.every((e) => e.apiKeyId === null)).toBe(true)
   })
 
+  // One project per case: sampling keeps one row per slug and reason, so cases that share a reason would hide each other.
+  it.each([
+    ['no Authorization header', 'AUTH_MISSING', undefined, undefined],
+    ['a different scheme', 'AUTH_MISSING', undefined, { authorization: 'Basic dXNlcjpwYXNz' }],
+    ['the Bearer scheme with nothing after it', 'AUTH_MISSING', undefined, { authorization: 'Bearer' }],
+    ['a malformed key (too short)', 'AUTH_INVALID', 'mcpg_fakekey123', undefined],
+    ['a key with the wrong prefix', 'AUTH_INVALID', 'sk_fakekey1234567890abcdef', undefined],
+    ['a well-formed key nobody was issued', 'AUTH_INVALID', 'mcpg_this-key-was-never-issued-0123456789', undefined],
+  ] as const)('classify %s as %s', async (_label, expected, key, headers) => {
+    const own = await createFixture({ upstreamBaseUrl: upstream.url })
+    const before = failures().length
+
+    const res = await rpc(gateway.mcpUrl(own.slug), key, 'tools/list', undefined, headers ? { ...headers } : {})
+    expect(res.status).toBe(401)
+
+    const logged = failures().slice(before).filter((e) => e.projectSlug === own.slug)
+    expect(logged.map((e) => e.errorClass)).toEqual([expected])
+    if (key) expect(JSON.stringify(logged)).not.toContain(key.slice(5)) // no part of the key is stored
+  })
+
   it('are sampled: a flood of bad requests logs one row per reason, not thousands', async () => {
     const own = await createFixture({ upstreamBaseUrl: upstream.url })
     const before = failures().length

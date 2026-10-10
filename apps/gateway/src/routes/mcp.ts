@@ -4,7 +4,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node'
 import type { AuthInfo } from '@modelcontextprotocol/server'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { lookupApiKey } from '../auth/api-key.js'
-import { parseBearerKey } from '../auth/bearer.js'
+import { bearerCredentialSent, parseBearerKey } from '../auth/bearer.js'
 import type { LastUsedTracker } from '../auth/last-used.js'
 import type { AuthFailureReason } from '../logging/call-logger.js'
 import { rateLimitKey } from '@mcp-gateway/shared'
@@ -67,7 +67,8 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpRouteDeps): voi
   app.post<{ Params: { projectSlug: string } }>('/mcp/:projectSlug', async (request, reply) => {
     const slug = request.params.projectSlug
     const token = parseBearerKey(request.headers.authorization)
-    if (!token) return unauthorized(reply, slug, 'AUTH_MISSING')
+    // Nothing sent is AUTH_MISSING; a Bearer value that is not a well-formed key (too short, wrong prefix) was still sent.
+    if (!token) return unauthorized(reply, slug, bearerCredentialSent(request.headers.authorization) ? 'AUTH_INVALID' : 'AUTH_MISSING')
 
     let principal: McpPrincipal
     let rateLimitPerMin: number
