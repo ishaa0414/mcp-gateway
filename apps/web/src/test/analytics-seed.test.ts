@@ -2,32 +2,28 @@
  * The analytics seed script: refuses production and non-local databases, is scoped to one
  * project, is repeatable, and produces rows that pass the same validation as real ones.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
 import { db, seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError } from '@mcp-gateway/db'
 import { logEventSchema } from '@mcp-gateway/shared/log-event'
 
 const LOCAL = { NODE_ENV: 'development', DATABASE_URL: 'postgresql://u:p@localhost:5432/mcpgateway_test' }
 const NOW = Date.UTC(2026, 9, 12, 10, 0, 0)
 
-let userId: string
-let projectA: { id: string; slug: string }
-let projectB: { id: string; slug: string }
+const userIds: string[] = []
 
-beforeAll(async () => {
-  const stamp = Date.now()
-  userId = (await db.user.create({ data: { email: `seed-${stamp}@test.local`, name: 'Seed' } })).id
-  const make = (suffix: string) =>
-    db.project.create({
-      data: { userId, name: suffix, slug: `seed-${suffix}-${stamp}`, upstreamBaseUrl: 'https://api.example.com' },
-      select: { id: true, slug: true },
-    })
-  projectA = await make('a')
-  projectB = await make('b')
-})
+/** Every test that touches the database makes its own user and project, so no test can see another's rows. */
+async function makeProject(label: string) {
+  const tag = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const user = await db.user.create({ data: { email: `seed-${tag}@test.local`, name: 'Seed' } })
+  userIds.push(user.id)
+  return db.project.create({
+    data: { userId: user.id, name: label, slug: `seed-${tag}`, upstreamBaseUrl: 'https://api.example.com' },
+    select: { id: true, slug: true },
+  })
+}
 
 afterAll(async () => {
-  await db.project.deleteMany({ where: { userId } })
-  await db.user.deleteMany({ where: { id: userId } })
+  await db.user.deleteMany({ where: { id: { in: userIds } } }) // projects and logs cascade
   await db.$disconnect()
 })
 
@@ -57,47 +53,56 @@ describe('assertSeedAllowed', () => {
 
 describe('seedAnalyticsLogs', () => {
   it('writes nothing and touches nothing in production', async () => {
-    const before = await db.toolCallLog.count({ where: { projectId: projectA.id } })
-    await expect(seedAnalyticsLogs(db, { projectSlug: projectA.slug, now: NOW }, { ...LOCAL, NODE_ENV: 'production' })).rejects.toThrow(
+    const project = await makeProject('prod')
+    await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 5, now: NOW }, LOCAL)
+    const before = await db.toolCallLog.count({ where: { projectId: project.id } })
+
+    await expect(seedAnalyticsLogs(db, { projectSlug: project.slug, now: NOW }, { ...LOCAL, NODE_ENV: 'production' })).rejects.toThrow(
       SeedRefusedError
     )
-    expect(await db.toolCallLog.count({ where: { projectId: projectA.id } })).toBe(before)
+    expect(before).toBe(5)
+    expect(await db.toolCallLog.count({ where: { projectId: project.id } })).toBe(before)
   })
 
   it('rejects an unknown project and a bad row count', async () => {
+    const project = await makeProject('rows')
     await expect(seedAnalyticsLogs(db, { projectSlug: 'no-such-project', now: NOW }, LOCAL)).rejects.toThrow(/No project/)
-    await expect(seedAnalyticsLogs(db, { projectSlug: projectA.slug, rows: 0 }, LOCAL)).rejects.toThrow(/--rows/)
-    await expect(seedAnalyticsLogs(db, { projectSlug: projectA.slug, rows: 100_001 }, LOCAL)).rejects.toThrow(/--rows/)
+    await expect(seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 0 }, LOCAL)).rejects.toThrow(/--rows/)
+    await expect(seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 100_001 }, LOCAL)).rejects.toThrow(/--rows/)
+    expect(await db.toolCallLog.count({ where: { projectId: project.id } })).toBe(0)
   })
 
   it('inserts rows with project-scoped ids and past timestamps, and a re-run replaces them', async () => {
-    const first = await seedAnalyticsLogs(db, { projectSlug: projectA.slug, rows: 300, now: NOW }, LOCAL)
-    expect(first).toMatchObject({ projectId: projectA.id, deleted: 0, written: 300 })
+    const project = await makeProject('rerun')
+    const first = await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 30, now: NOW }, LOCAL)
+    expect(first).toMatchObject({ projectId: project.id, deleted: 0, written: 30 })
 
-    const rows = await db.toolCallLog.findMany({ where: { projectId: projectA.id } })
-    expect(rows).toHaveLength(300)
-    expect(rows.every((r) => r.id.startsWith(`seed_${projectA.id}_`))).toBe(true)
+    const rows = await db.toolCallLog.findMany({ where: { projectId: project.id } })
+    expect(rows).toHaveLength(30)
+    expect(rows.every((r) => r.id.startsWith(`seed_${project.id}_`))).toBe(true)
     // The explicit past created_at is kept: everything falls inside the 7 days before NOW.
     const times = rows.map((r) => r.createdAt.getTime())
     expect(Math.max(...times)).toBeLessThanOrEqual(NOW)
     expect(Math.min(...times)).toBeGreaterThanOrEqual(NOW - 7 * 24 * 3600 * 1000)
 
-    const second = await seedAnalyticsLogs(db, { projectSlug: projectA.slug, rows: 300, now: NOW }, LOCAL)
-    expect(second).toMatchObject({ deleted: 300, written: 300 })
-    expect(await db.toolCallLog.count({ where: { projectId: projectA.id } })).toBe(300)
+    const second = await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 30, now: NOW }, LOCAL)
+    expect(second).toMatchObject({ deleted: 30, written: 30 })
+    expect(await db.toolCallLog.count({ where: { projectId: project.id } })).toBe(30)
   })
 
   it("never deletes a real row or another project's seed rows", async () => {
-    await seedAnalyticsLogs(db, { projectSlug: projectB.slug, rows: 50, now: NOW }, LOCAL)
+    const [a, b] = [await makeProject('scope-a'), await makeProject('scope-b')]
+    await seedAnalyticsLogs(db, { projectSlug: b.slug, rows: 10, now: NOW }, LOCAL)
+    await seedAnalyticsLogs(db, { projectSlug: a.slug, rows: 5, now: NOW }, LOCAL)
     await db.toolCallLog.create({
-      data: { id: 'real-event-1', projectId: projectA.id, toolName: 'listPets', input: {}, latencyMs: 5, success: true, createdAt: new Date(NOW) },
+      data: { id: `real-${a.id}`, projectId: a.id, toolName: 'listPets', input: {}, latencyMs: 5, success: true, createdAt: new Date(NOW) },
     })
 
-    await seedAnalyticsLogs(db, { projectSlug: projectA.slug, rows: 20, now: NOW }, LOCAL)
+    await seedAnalyticsLogs(db, { projectSlug: a.slug, rows: 8, now: NOW }, LOCAL)
 
-    expect(await db.toolCallLog.count({ where: { id: 'real-event-1' } })).toBe(1)
-    expect(await db.toolCallLog.count({ where: { projectId: projectB.id } })).toBe(50)
-    expect(await db.toolCallLog.count({ where: { projectId: projectA.id } })).toBe(21)
+    expect(await db.toolCallLog.count({ where: { id: `real-${a.id}` } })).toBe(1)
+    expect(await db.toolCallLog.count({ where: { projectId: b.id } })).toBe(10)
+    expect(await db.toolCallLog.count({ where: { projectId: a.id } })).toBe(9) // 8 new seed rows replaced the 5 old ones, plus the real row
   })
 })
 
