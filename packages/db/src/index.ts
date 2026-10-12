@@ -46,7 +46,7 @@ export const db: PrismaClient = new Proxy({} as PrismaClient, {
 export { writeLogBatch } from './log-store.js'
 export type { WriteLogResult } from './log-store.js'
 export { purgeOldLogs } from './log-retention.js'
-export { PrismaClient } from './generated/client/client.js'
+export { PrismaClient, Prisma } from './generated/client/client.js'
 export type * from './generated/client/client.js'
 export { seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError, DEFAULT_SEED_ROWS, MAX_SEED_ROWS } from './analytics-seed.js'
 export type { SeedResult } from './analytics-seed.js'
