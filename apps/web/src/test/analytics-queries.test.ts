@@ -1,8 +1,9 @@
 /** Summary numbers, zero-filled series, top tools and the whole-tab overview, on known data. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { db } from '@mcp-gateway/db'
-import { getSummary, getCallsOverTime, getTopTools, getOverview } from '@/lib/analytics/queries'
-import { createOwner, deleteOwners, insertLogs, NOW } from './analytics-fixtures'
+import * as queries from '@/lib/analytics/queries'
+import { getSummary, getCallsOverTime, getTopTools, getOverview, getRecentCalls } from '@/lib/analytics/queries'
+import { createOwner, deleteOwners, insertLogs, NOW, TEST_DB_SESSION_TIME_ZONE } from './analytics-fixtures'
 
 const opts = (range: '24h' | '7d' | '30d' = '7d', timeZone = 'Asia/Kolkata') => ({ range, timeZone, now: NOW })
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3600_000)
@@ -154,5 +155,85 @@ describe('overview', () => {
     const o = (await getOverview(quiet.scope, opts('24h')))!
     expect(o.summary.totalCalls).toBe(0)
     expect(o.hasAnyLogs).toBe(true)
+  })
+})
+
+describe('window bounds are exact, whatever the database session time zone is', () => {
+  // 7 d in IST at NOW: the window starts at IST midnight 6 days back, 2026-10-05T18:30:00Z, and ends at NOW.
+  const LO = '2026-10-05T18:30:00.000Z'
+  let edge: Awaited<ReturnType<typeof createOwner>>
+
+  beforeAll(async () => {
+    edge = await createOwner('edge')
+    owners.push(edge.userId)
+    await insertLogs(edge.projectId, [
+      { id: 'q-edge-lo-minus', at: '2026-10-05T18:29:59.999Z' },
+      { id: 'q-edge-lo', at: LO },
+      { id: 'q-edge-now-minus', at: new Date(NOW.getTime() - 60_000) },
+      { id: 'q-edge-now', at: NOW },
+      { id: 'q-edge-now-plus', at: new Date(NOW.getTime() + 1) },
+    ])
+  })
+
+  it('the database session really is not UTC (otherwise this block proves nothing)', async () => {
+    const [row] = await db.$queryRaw<{ TimeZone: string }[]>`SHOW TimeZone`
+    expect(row!.TimeZone).toBe(TEST_DB_SESSION_TIME_ZONE)
+  })
+
+  it('counts a row at the window start and at now, and not 1 ms before the start or 1 ms after now', async () => {
+    const s = (await getSummary(edge.scope, opts('7d')))!
+    expect(s.windowStart.toISOString()).toBe(LO)
+    expect(s.windowEnd.toISOString()).toBe(NOW.toISOString())
+    expect(s.totalCalls).toBe(3) // lo, now-1min, now
+    const series = (await getCallsOverTime(edge.scope, opts('7d')))!
+    expect(series[0]!.start.toISOString()).toBe(LO)
+    expect(series.reduce((n, b) => n + b.ok + b.errors, 0)).toBe(3)
+    expect((await getTopTools(edge.scope, opts('7d')))![0]!.calls).toBe(3)
+  })
+
+  it('recent calls use the same window: same rows as the cards', async () => {
+    const page = (await getRecentCalls(edge.scope, opts('7d')))!
+    expect(page.calls.map((c) => c.id)).toEqual(['q-edge-now', 'q-edge-now-minus', 'q-edge-lo'])
+  })
+})
+
+describe('recent calls follow the range picker', () => {
+  let r: Awaited<ReturnType<typeof createOwner>>
+
+  beforeAll(async () => {
+    r = await createOwner('range')
+    owners.push(r.userId)
+    await insertLogs(r.projectId, [
+      { id: 'q-r-2h', at: hoursAgo(2) },
+      { id: 'q-r-3d', at: hoursAgo(24 * 3) },
+      { id: 'q-r-20d', at: hoursAgo(24 * 20) },
+      { id: 'q-r-auth', at: hoursAgo(1), tool: null, kind: 'AUTH_FAILURE', ok: false, errorClass: 'AUTH_INVALID', latency: 0, upstreamStatus: null },
+    ])
+  })
+
+  it.each([
+    ['24h', ['q-r-auth', 'q-r-2h']],
+    ['7d', ['q-r-auth', 'q-r-2h', 'q-r-3d']],
+    ['30d', ['q-r-auth', 'q-r-2h', 'q-r-3d', 'q-r-20d']],
+  ] as const)('%s lists exactly the rows in that window', async (range, ids) => {
+    const page = (await getRecentCalls(r.scope, opts(range)))!
+    expect(page.calls.map((c) => c.id)).toEqual(ids)
+    expect(page.nextCursor).toBeNull()
+  })
+
+  it('a quiet range gives an empty page, not "not found"', async () => {
+    const quiet = await createOwner('range-quiet')
+    owners.push(quiet.userId)
+    await insertLogs(quiet.projectId, [{ id: 'q-rq-old', at: hoursAgo(24 * 10) }])
+    expect(await getRecentCalls(quiet.scope, opts('24h'))).toEqual({ calls: [], nextCursor: null })
+  })
+})
+
+describe('the module exposes only scoped entry points', () => {
+  it('every exported function takes the { userId, slug } scope first; none takes a raw project id', () => {
+    const functions = Object.entries(queries).filter(([, v]) => typeof v === 'function' && !/^[A-Z]/.test(v.name))
+    expect(functions.map(([name]) => name).sort()).toEqual([
+      'getCallDetail', 'getCallsOverTime', 'getOverview', 'getRecentCalls', 'getSummary', 'getTopTools', 'hasAnyLogs',
+    ])
   })
 })

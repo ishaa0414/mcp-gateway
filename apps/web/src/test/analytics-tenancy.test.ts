@@ -34,7 +34,7 @@ describe("user B cannot read user A's analytics", () => {
     expect(await getSummary(bAsksForA, opts)).toBeNull()
     expect(await getCallsOverTime(bAsksForA, opts)).toBeNull()
     expect(await getTopTools(bAsksForA, opts)).toBeNull()
-    expect(await getRecentCalls(bAsksForA)).toBeNull()
+    expect(await getRecentCalls(bAsksForA, opts)).toBeNull()
     expect(await getOverview(bAsksForA, opts)).toBeNull()
     expect(await hasAnyLogs(bAsksForA)).toBeNull()
   })
@@ -47,7 +47,7 @@ describe("user B cannot read user A's analytics", () => {
   it("B's own project shows only B's rows", async () => {
     const summary = await getSummary(b.scope, opts)
     expect(summary).toMatchObject({ totalCalls: 1, p50Ms: 9 })
-    const recent = await getRecentCalls(b.scope)
+    const recent = await getRecentCalls(b.scope, opts)
     expect(recent!.calls.map((c) => c.id)).toEqual(['b-own-1'])
     expect((await getCallDetail(b.scope, 'b-own-1'))!.id).toBe('b-own-1')
   })
@@ -55,12 +55,12 @@ describe("user B cannot read user A's analytics", () => {
   it('an unknown slug looks exactly like someone else\'s', async () => {
     const nobody = { userId: a.userId, slug: 'no-such-project' }
     expect(await getSummary(nobody, opts)).toBeNull()
-    expect(await getRecentCalls(nobody)).toBeNull()
+    expect(await getRecentCalls(nobody, opts)).toBeNull()
   })
 
   it('the owner gets their data', async () => {
     expect(await getSummary(a.scope, opts)).toMatchObject({ totalCalls: 2 })
-    expect((await getRecentCalls(a.scope))!.calls).toHaveLength(2)
+    expect((await getRecentCalls(a.scope, opts))!.calls).toHaveLength(2)
     expect(await getCallDetail(a.scope, 'a-secret-1')).toMatchObject({ input: { petId: 1 } })
   })
 })

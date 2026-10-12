@@ -205,3 +205,22 @@ Short log of significant technical choices and their rationale.
 **Decision:** `@mcp-gateway/db` imports `@mcp-gateway/shared/log-event` (a subpath export), not the whole package. Test Redis clients have no `commandTimeout`.
 **Why:** Importing all of `shared` pulled undici and the SSRF code into every consumer of the db client, which showed up as a slower cold import in the web tests. A 500 ms command timeout in the test harness made healthy Redis calls fail on a loaded machine, which silently turned cache hits into misses and made the (deliberately fail-open) limiter allow calls.
 
+---
+
+## Phase 4
+
+### Analytics: resolve the owned project id first, then query logs by that id
+**Decision:** Every analytics function takes `{ userId, slug }` and starts with `ownedProjectId` (`WHERE slug = $1 AND user_id = $2`); every log query then filters on `project_id = $id`. The SQL builders are private, so no caller can pass a project id of its own. A project the user does not own gives `null` from every function, the same as an unknown slug.
+**Why:** The first version joined `projects` inside each statement. The planner cannot know the project at plan time, so for a small tenant on a table shared with large ones it chose a sequential scan of the whole table (7 d summary) and a backward walk of the global `created_at` index (recent calls); measured on 408 rows among 100k, 38 ms and 8 ms versus 0.8 ms and 0.2 ms once the id is a bound parameter. The cost of the look-up is one indexed read.
+
+### Analytics: instants leave SQL as UTC wall-clock, bounds are converted explicitly
+**Decision:** `tool_call_logs.created_at` is `timestamp(3) WITHOUT time zone` holding UTC. Window bounds are computed as `timestamptz` and converted with `AT TIME ZONE 'UTC'` before they are compared with the column (which also keeps the `(project_id, created_at)` index usable). Every instant returned (`first_start`, `ts`, bucket starts) is converted the same way, so it comes back as a plain timestamp.
+**Why:** Two separate traps, both invisible on a UTC database. Comparing a naive column with a `timestamptz` makes Postgres read the column in the *session* time zone, which shifts both bounds by the session offset. And the Prisma pg adapter reads a `timestamptz` by rewriting its printed offset to `+00:00` without converting, so a non-UTC session returns wrong instants. The Node process time zone does not matter: the adapter writes a `Date` with `getUTC*`, and raw SQL passes `now` as an ISO string with `Z`. The analytics tests therefore run on a Los Angeles database session, with boundary rows 1 ms either side of the window; removing either conversion makes the suite fail, while on a UTC session the same removals pass. Verified on Node with `TZ` set to UTC, `America/New_York` and IST (on Windows, Node only honours `TZ=UTC` and POSIX names such as `EST5EDT`).
+
+### Analytics: what counts, and which window
+**Decision:** A "call" is a `TOOL_CALL` row that is not `RATE_LIMITED`. Rate-limited rows (sampled, latency 0) and auth failures (sampled) appear only as "at least" counts. p50/p95 use `percentile_cont` over all calls, so they are the gateway's end-to-end latency, including fast validation failures. The window is the buckets themselves: 24 hourly buckets, or 7 / 30 local days including today, aligned to the viewer's time zone; cards, chart, top tools and recent calls share its start, so "24 h" covers 23 to 24 hours and "7 d" covers 6 days plus today.
+**Why:** Sampled zero-latency rows would drag p50 towards 0 and make totals depend on the sampling. Aligned buckets are what a chart can draw without a partial first bar, and one shared start means every number on the page adds up.
+
+### Web tests: hook and test timeouts of 60 s and 30 s
+**Decision:** `apps/web/vitest.config.ts` sets `hookTimeout: 60_000` and `testTimeout: 30_000`.
+**Why:** `redis-unavailable.test.ts` failed once in a full run with "Hook timed out in 10000ms". Reproduced on demand by loading the CPU (12 busy loops on 4 cores): its `beforeAll` cold-imports the whole action graph, 2.5 s on an idle machine and 8.2 s when starved, then writes to the database. The same hook passed in 10.3 s under the same load with the longer limit. Nothing was shared between files (the Redis URL is stubbed per file, the rows are uniquely tagged); the default was shorter than the real work. Tests that care about speed keep their own tighter assertions.

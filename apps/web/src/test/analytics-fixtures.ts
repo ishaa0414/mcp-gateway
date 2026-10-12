@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import { db, type Prisma } from '@mcp-gateway/db'
 
+/**
+ * Run every analytics test on a database session whose TimeZone is NOT UTC. `created_at` is a
+ * `timestamp without time zone` holding UTC, and the Prisma pg adapter relabels `timestamptz`
+ * results as UTC, so code that quietly depends on the session being UTC passes on a UTC server
+ * (dev, CI) and is wrong on any other. A negative offset moves both window bounds the wrong way,
+ * which the boundary tests in analytics-queries.test.ts detect. Must be set before the first
+ * connection, i.e. before the first query of the file.
+ */
+export const TEST_DB_SESSION_TIME_ZONE = 'America/Los_Angeles'
+process.env['PGOPTIONS'] = `-c TimeZone=${TEST_DB_SESSION_TIME_ZONE}`
+
 /** A user with one project, and a way to put log rows in it at exact times. */
 export async function createOwner(label: string) {
   const stamp = `${label}-${randomUUID().slice(0, 8)}`

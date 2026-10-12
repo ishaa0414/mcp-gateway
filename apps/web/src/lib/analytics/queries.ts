@@ -17,6 +17,9 @@ import { resolveTimeZone } from './timezone'
  *
  * `tool_call_logs.created_at` is `timestamp(3) WITHOUT time zone` holding UTC. It is compared
  * as-is (so the indexes apply) and only converted with `AT TIME ZONE 'UTC'` when it is bucketed.
+ * Every instant that leaves SQL is also a UTC wall-clock `timestamp`, never a `timestamptz`: the
+ * Prisma pg adapter relabels a timestamptz's offset as +00:00 without converting, which is only
+ * right when the database session's TimeZone is UTC (see the time-zone note in DECISIONS.md).
  *
  * What counts as a call: a `TOOL_CALL` row that was not turned away by the rate limiter.
  * Rate-limited rows are sampled and have latency 0, so they would distort every number; they
@@ -113,11 +116,10 @@ export async function getSummary(scope: AnalyticsScope, options: WindowOptions):
   return projectId === null ? null : summaryFor(projectId, await prepare(options))
 }
 
-/** The summary statement, exported so EXPLAIN can run exactly what the app runs. */
-export function summarySql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
+function summarySql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
   return Prisma.sql`
     WITH ${windowCte(range, timeZone, now)}
-    SELECT win.first_start, win.ts,
+    SELECT win.lo AS first_start, win.hi AS ts,
            count(l.id) FILTER (WHERE ${COUNTED}) AS total,
            count(l.id) FILTER (WHERE ${COUNTED} AND NOT l.success) AS errors,
            count(l.id) FILTER (WHERE l.kind = 'AUTH_FAILURE') AS auth_failures,
@@ -125,7 +127,7 @@ export function summarySql(projectId: string, range: Range, timeZone: string, no
            percentile_cont(ARRAY[0.5, 0.95]) WITHIN GROUP (ORDER BY l.latency_ms) FILTER (WHERE ${COUNTED}) AS pct
     FROM win
     LEFT JOIN tool_call_logs l ON l.project_id = ${projectId} AND ${inWindow}
-    GROUP BY win.first_start, win.ts`
+    GROUP BY win.lo, win.hi`
 }
 
 async function summaryFor(projectId: string, p: Prepared): Promise<Summary> {
@@ -177,7 +179,7 @@ export async function getCallsOverTime(scope: AnalyticsScope, options: WindowOpt
   return projectId === null ? null : callsOverTimeFor(projectId, await prepare(options))
 }
 
-export function callsOverTimeSql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
+function callsOverTimeSql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
   const { unit } = RANGE_PLANS[range]
   const step = unit === 'hour' ? Prisma.sql`interval '1 hour'` : Prisma.sql`interval '1 day'`
   return Prisma.sql`
@@ -195,7 +197,7 @@ export function callsOverTimeSql(projectId: string, range: Range, timeZone: stri
       WHERE ${COUNTED}
       GROUP BY 1
     )
-    SELECT grid.bucket_start, coalesce(counts.ok, 0) AS ok, coalesce(counts.errors, 0) AS errors
+    SELECT grid.bucket_start AT TIME ZONE 'UTC' AS bucket_start, coalesce(counts.ok, 0) AS ok, coalesce(counts.errors, 0) AS errors
     FROM grid LEFT JOIN counts USING (bucket_start)
     ORDER BY grid.bucket_start`
 }
@@ -229,7 +231,7 @@ export async function getTopTools(scope: AnalyticsScope, options: WindowOptions)
   return projectId === null ? null : topToolsFor(projectId, await prepare(options))
 }
 
-export function topToolsSql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
+function topToolsSql(projectId: string, range: Range, timeZone: string, now: Date): Prisma.Sql {
   return Prisma.sql`
     WITH ${windowCte(range, timeZone, now)}
     SELECT l.tool_name,
@@ -290,30 +292,33 @@ export class InvalidCursorError extends Error {
 }
 
 /**
- * The statement for one page, newest first, keyset-paginated on (created_at, id). The redundant
- * `created_at <=` lets Postgres use the `(project_id, created_at)` index for the range; the row
- * comparison then settles ties between rows in the same millisecond.
+ * The statement for one page, newest first, keyset-paginated on (created_at, id), inside the same
+ * window as every other number on the page. The redundant `created_at <=` lets Postgres use the
+ * `(project_id, created_at)` index for the range; the row comparison then settles ties between
+ * rows in the same millisecond.
  */
-export function recentCallsSql(projectId: string, cursor: Cursor | null, limit: number): Prisma.Sql {
+function recentCallsSql(projectId: string, range: Range, timeZone: string, now: Date, cursor: Cursor | null, limit: number): Prisma.Sql {
   const after = cursor
     ? Prisma.sql`AND l.created_at <= ${cursor.createdAt}::timestamp AND (l.created_at, l.id) < (${cursor.createdAt}::timestamp, ${cursor.id})`
     : Prisma.empty
   return Prisma.sql`
+    WITH ${windowCte(range, timeZone, now)}
     SELECT l.id, l.created_at, to_char(l.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS cursor_at,
            l.kind, l.tool_name, l.success, l.error_class, l.latency_ms, l.upstream_status
-    FROM tool_call_logs l
-    WHERE l.project_id = ${projectId} ${after}
+    FROM win
+    JOIN tool_call_logs l ON l.project_id = ${projectId} AND ${inWindow} ${after}
     ORDER BY l.created_at DESC, l.id DESC
     LIMIT ${limit + 1}`
 }
 
 /**
- * Newest first. It lists every kind of row, including auth failures and rate-limited calls,
- * whatever the range picker says: "recent" means the latest.
+ * Newest first, inside the selected range (the same window start as the cards, chart and top
+ * tools). It lists every kind of row, including auth failures and rate-limited calls. To keep the
+ * window fixed while paging, pass the first page's `now` (the summary's `windowEnd`) back in.
  */
 export async function getRecentCalls(
   scope: AnalyticsScope,
-  options: { cursor?: string | null; limit?: number } = {}
+  options: WindowOptions & { cursor?: string | null; limit?: number }
 ): Promise<RecentCallsPage | null> {
   const limit = Math.min(Math.max(options.limit ?? RECENT_CALLS_PAGE_SIZE, 1), RECENT_CALLS_MAX_PAGE_SIZE)
   let cursor: Cursor | null = null
@@ -322,10 +327,10 @@ export async function getRecentCalls(
     if (!cursor) throw new InvalidCursorError()
   }
   const projectId = await ownedProjectId(scope)
-  return projectId === null ? null : recentCallsFor(projectId, cursor, limit)
+  return projectId === null ? null : recentCallsFor(projectId, await prepare(options), cursor, limit)
 }
 
-async function recentCallsFor(projectId: string, cursor: Cursor | null, limit: number): Promise<RecentCallsPage> {
+async function recentCallsFor(projectId: string, p: Prepared, cursor: Cursor | null, limit: number): Promise<RecentCallsPage> {
   const rows = await db.$queryRaw<
     {
       id: string
@@ -338,7 +343,7 @@ async function recentCallsFor(projectId: string, cursor: Cursor | null, limit: n
       latency_ms: number
       upstream_status: number | null
     }[]
-  >(recentCallsSql(projectId, cursor, limit))
+  >(recentCallsSql(projectId, p.range, p.timeZone, p.now, cursor, limit))
 
   const page = rows.slice(0, limit)
   const last = page[page.length - 1]
