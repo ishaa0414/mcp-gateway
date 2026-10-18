@@ -1,6 +1,7 @@
 import type { LogErrorClass, LogEvent } from '@mcp-gateway/shared/log-event'
 import type { PrismaClient } from './generated/client/client.js'
 import { writeLogBatch } from './log-store.js'
+import { sampleToolInput } from './seed-input.js'
 
 /**
  * Development helper: fill a project with realistic call logs so the analytics dashboard has
@@ -11,7 +12,6 @@ import { writeLogBatch } from './log-store.js'
 export const DEFAULT_SEED_ROWS = 400
 export const MAX_SEED_ROWS = 100_000
 const DAY_MS = 24 * 60 * 60 * 1000
-const MASKED = '[MASKED]' // what packages/shared/src/mask.ts stores for a secret
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -45,22 +45,42 @@ export function createRandom(seed: number): () => number {
   }
 }
 
-interface SeedTool {
-  id: string | null
-  name: string
+interface SeedTool extends SeedToolSource {
   /** Median latency of a successful call, ms. */
   medianMs: number
   /** Relative call volume. */
   weight: number
 }
 
-const FALLBACK_TOOLS = ['listPets', 'getPetById', 'findPetsByStatus', 'addPet', 'updatePet', 'getOrderById', 'deleteOrder']
+const int = (minimum: number, maximum: number) => ({ type: 'integer', minimum, maximum })
+const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required })
+const STATUS = { type: 'string', enum: ['available', 'pending', 'sold'] }
+
+/** Used when the project has no tools: Petstore-shaped, so the inputs still look like real arguments. */
+const FALLBACK_TOOLS: SeedToolSource[] = [
+  { id: null, name: 'listPets', inputSchema: object({ limit: int(1, 100) }) },
+  { id: null, name: 'getPetById', inputSchema: object({ petId: int(1, 500) }, ['petId']) },
+  { id: null, name: 'findPetsByStatus', inputSchema: object({ status: STATUS }, ['status']) },
+  { id: null, name: 'addPet', inputSchema: object({ name: { type: 'string' }, status: STATUS }, ['name']) },
+  { id: null, name: 'updatePet', inputSchema: object({ petId: int(1, 500), name: { type: 'string' }, status: STATUS }, ['petId']) },
+  { id: null, name: 'getOrderById', inputSchema: object({ orderId: int(1, 10) }, ['orderId']) },
+  { id: null, name: 'deleteOrder', inputSchema: object({ orderId: int(1, 500) }, ['orderId']) },
+  { id: null, name: 'loginUser', inputSchema: object({ username: { type: 'string' }, password: { type: 'string' } }, ['username', 'password']) },
+]
+
+interface SeedToolSource {
+  id: string | null
+  name: string
+  /** The tool's real input schema; its parameters decide what a seeded call sends. */
+  inputSchema?: unknown
+  hiddenParams?: unknown
+}
 
 /** Build the event list. Pure: the same inputs give the same events. */
 export function buildSeedEvents(params: {
   projectId: string
   projectSlug: string
-  tools: readonly { id: string | null; name: string }[]
+  tools: readonly SeedToolSource[]
   rows: number
   now: number
   seed?: number
@@ -76,10 +96,9 @@ export function buildSeedEvents(params: {
     return Math.max(1, Math.round(median * Math.exp(sigma * normal)))
   }
 
-  const source = params.tools.length > 0 ? params.tools : FALLBACK_TOOLS.map((name) => ({ id: null, name }))
+  const source = params.tools.length > 0 ? params.tools : FALLBACK_TOOLS
   const tools: SeedTool[] = source.map((t, i) => ({
-    id: t.id,
-    name: t.name,
+    ...t,
     medianMs: 60 + ((i * 97) % 500), // varied per tool
     weight: 1 / (i + 1), // a few busy tools and a long tail
   }))
@@ -122,8 +141,7 @@ export function buildSeedEvents(params: {
 
     const tool = pickTool()
     const base = { id, kind: 'TOOL_CALL' as const, projectId, apiKeyId: null, toolId: tool.id, toolName: tool.name, timestamp }
-    const input: Record<string, unknown> = random() < 0.5 ? { id: between(1, 500) } : { status: ['available', 'pending', 'sold'][pick(3)] }
-    if (random() < 0.1) input['api_key'] = MASKED
+    const input = sampleToolInput(tool.inputSchema, tool.hiddenParams, random)
 
     if (roll < 0.035) {
       events.push({
@@ -190,7 +208,7 @@ export async function seedAnalyticsLogs(
 
   const tools = await db.tool.findMany({
     where: { projectId: project.id, enabled: true, removedAt: null },
-    select: { id: true, name: true },
+    select: { id: true, name: true, inputSchema: true, hiddenParams: true },
     orderBy: { name: 'asc' },
   })
 

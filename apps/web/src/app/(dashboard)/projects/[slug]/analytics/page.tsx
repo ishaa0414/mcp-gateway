@@ -7,7 +7,7 @@ import { toRow } from '@/lib/analytics/rows'
 import { getOverview, getRecentCalls } from '@/lib/analytics/queries'
 import { DEFAULT_RANGE, RANGE_PLANS, RANGES, type Range } from '@/lib/analytics/range'
 import { VIEWER_TZ_COOKIE } from '@/lib/analytics/viewer-tz'
-import { formatInstant, formatMs, formatPercent, NO_VALUE } from '@/lib/analytics/format'
+import { formatAtLeast, formatInstant, formatMs, formatPercent, NO_VALUE } from '@/lib/analytics/format'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CallsChart } from '@/components/analytics/calls-chart'
 import { RecentCalls } from '@/components/analytics/recent-calls'
@@ -97,10 +97,10 @@ export default async function AnalyticsPage({ params, searchParams }: Props) {
               value={formatPercent(summary.errorRate)}
               note={`${summary.errorCalls.toLocaleString('en-US')} of ${summary.totalCalls.toLocaleString('en-US')} calls`}
             />
-            <Stat title="Auth failures" value={`at least ${summary.authFailuresAtLeast.toLocaleString('en-US')}`} note="sampled by the gateway" />
+            <Stat title="Auth failures" value={formatAtLeast(summary.authFailuresAtLeast)} note="sampled by the gateway" />
             <Stat title="Latency p50" value={formatMs(summary.p50Ms)} note="gateway end-to-end" />
             <Stat title="Latency p95" value={formatMs(summary.p95Ms)} note="gateway end-to-end" />
-            <Stat title="Rate limited" value={`at least ${summary.rateLimitedAtLeast.toLocaleString('en-US')}`} note="sampled by the gateway" />
+            <Stat title="Rate limited" value={formatAtLeast(summary.rateLimitedAtLeast)} note="sampled by the gateway" />
           </div>
 
           <Card>

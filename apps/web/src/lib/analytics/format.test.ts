@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBucketLabel, formatBucketTitle, formatBytes, formatInstant, formatMs, formatPercent, niceMax, NO_VALUE } from './format'
+import { formatAtLeast, formatBucketLabel, formatBucketTitle, formatBytes, formatInstant, formatMs, formatPercent, niceMax, NO_VALUE } from './format'
 
 describe('formatInstant', () => {
   it('states the instant in the viewer zone, with the zone name', () => {
@@ -42,6 +42,14 @@ describe('number formatting', () => {
     expect(formatPercent(0.5)).toBe('50%')
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(2048)).toBe('2.0 KB')
+  })
+})
+
+describe('formatAtLeast', () => {
+  it('says "at least" only for a positive count', () => {
+    expect(formatAtLeast(0)).toBe('0')
+    expect(formatAtLeast(1)).toBe('at least 1')
+    expect(formatAtLeast(1234)).toBe('at least 1,234')
   })
 })
 

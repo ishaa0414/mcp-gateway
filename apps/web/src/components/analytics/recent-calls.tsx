@@ -1,5 +1,5 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { loadCallDetail, loadMoreCalls, type CallDetailView } from '@/actions/analytics'
 import type { RecentCallRow } from '@/lib/analytics/rows'
 import type { Range } from '@/lib/analytics/range'
@@ -62,7 +62,7 @@ export function RecentCalls({ slug, range, timeZone, windowEnd, initial }: Props
                 <td className="whitespace-nowrap py-2 pr-4">
                   <button
                     type="button"
-                    className="rounded text-left underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
+                    className="relative rounded text-left underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
                     onClick={(e) => {
                       e.stopPropagation()
                       setSelected(c)
@@ -113,19 +113,25 @@ export function RecentCalls({ slug, range, timeZone, windowEnd, initial }: Props
   )
 }
 
-type DetailState = { id: string; result: 'loading' | 'error' | CallDetailView }
+type DetailState = { id: string; result: 'error' | CallDetailView }
 
 function CallDialog({ slug, timeZone, call, onClose }: { slug: string; timeZone: string; call: RecentCallRow | null; onClose: () => void }) {
   const [detail, setDetail] = useState<DetailState | null>(null)
 
-  // Fetch when a different call is opened. State is keyed by id, so an old answer never shows for a new row.
-  if (call && detail?.id !== call.id) {
-    setDetail({ id: call.id, result: 'loading' })
-    void loadCallDetail({ slug, id: call.id }).then((res) =>
-      setDetail((d) => (d?.id === call.id ? { id: call.id, result: res.ok ? res.data : 'error' } : d))
-    )
-  }
-  const result = call && detail?.id === call.id ? detail.result : null
+  // A server action must not be started while rendering (it updates the router), so the fetch
+  // runs in an effect. The answer is keyed by id, so an old one never shows for a different row.
+  const id = call?.id
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    void loadCallDetail({ slug, id }).then((res) => {
+      if (!cancelled) setDetail({ id, result: res.ok ? res.data : 'error' })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [slug, id])
+  const result = call ? (detail?.id === call.id ? detail.result : 'loading') : null
 
   return (
     <Dialog

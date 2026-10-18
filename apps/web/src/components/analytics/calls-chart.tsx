@@ -44,7 +44,7 @@ export function CallsChart({ buckets, timeZone, unit }: { buckets: ChartBucket[]
   const tooltipLeftPct = active === null ? 0 : ((MARGIN.left + slot * (active + 0.5)) / W) * 100
 
   return (
-    <figure className="m-0">
+    <figure className="relative m-0">
       <div className="relative">
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -104,7 +104,9 @@ export function CallsChart({ buckets, timeZone, unit }: { buckets: ChartBucket[]
         <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-sm ${ERR_SWATCH}`} />Errors</span>
       </figcaption>
 
-      <table className="sr-only">
+      {/* The wrapper is what is hidden: a table ignores sr-only's 1px clip and would stay full height. */}
+      <div className="sr-only">
+      <table>
         <caption>Calls per {unitWord}</caption>
         <thead>
           <tr><th scope="col">{unit === 'hour' ? 'Hour' : 'Day'}</th><th scope="col">Successes</th><th scope="col">Errors</th></tr>
@@ -119,6 +121,7 @@ export function CallsChart({ buckets, timeZone, unit }: { buckets: ChartBucket[]
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   )
 }

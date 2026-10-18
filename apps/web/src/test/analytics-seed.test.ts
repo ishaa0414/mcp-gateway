@@ -132,3 +132,70 @@ describe('buildSeedEvents', () => {
     expect(errorRate).toBeLessThan(0.3)
   })
 })
+
+describe('seeded tool inputs', () => {
+  const loginSchema = {
+    type: 'object',
+    properties: { username: { type: 'string' }, password: { type: 'string' } },
+    required: ['username', 'password'],
+  }
+  const petSchema = {
+    type: 'object',
+    properties: { petId: { type: 'integer', minimum: 1, maximum: 9 }, status: { type: 'string', enum: ['available', 'sold'] }, region: { type: 'string' } },
+    required: ['petId'],
+  }
+  const tools = [
+    { id: null, name: 'loginUser', inputSchema: loginSchema },
+    { id: null, name: 'getPet', inputSchema: petSchema, hiddenParams: { region: 'eu' } },
+  ]
+  const events = buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools, rows: 600, now: NOW })
+  const callsOf = (name: string) => events.filter((e) => e.kind === 'TOOL_CALL' && e.toolName === name && Object.keys(e.input).length > 0)
+
+  it('loginUser sends a username and a password, and the password is masked like a real row', () => {
+    const logins = callsOf('loginUser')
+    expect(logins.length).toBeGreaterThan(20)
+    for (const e of logins) {
+      expect(Object.keys(e.input).sort()).toEqual(['password', 'username'])
+      expect(e.input['password']).toBe('[MASKED]')
+      expect(typeof e.input['username']).toBe('string')
+      expect(e.input['username']).not.toBe('[MASKED]')
+    }
+    // No raw sample password anywhere in the output.
+    expect(JSON.stringify(events)).not.toMatch(/-Pw!/)
+  })
+
+  it("every other tool sends only its own parameters, within their types and bounds, and never a hidden one", () => {
+    const pets = callsOf('getPet')
+    expect(pets.length).toBeGreaterThan(20)
+    for (const e of pets) {
+      expect(Object.keys(e.input)).not.toContain('region')
+      expect(Object.keys(e.input).every((k) => k === 'petId' || k === 'status')).toBe(true)
+      expect(Number.isInteger(e.input['petId'])).toBe(true)
+      expect(e.input['petId'] as number).toBeGreaterThanOrEqual(1)
+      expect(e.input['petId'] as number).toBeLessThanOrEqual(9)
+      if ('status' in e.input) expect(['available', 'sold']).toContain(e.input['status'])
+    }
+  })
+
+  it('the Petstore fallback (no tools) includes loginUser with a masked password', () => {
+    const fallback = buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools: [], rows: 3000, now: NOW })
+    const logins = fallback.filter((e) => e.toolName === 'loginUser' && Object.keys(e.input).length > 0)
+    expect(logins.length).toBeGreaterThan(0)
+    expect(logins.every((e) => e.input['password'] === '[MASKED]')).toBe(true)
+  })
+
+  it("stores a project tool's inputs in the database through the same path as real rows", async () => {
+    const project = await makeProject('inputs')
+    await db.tool.create({
+      data: {
+        projectId: project.id, operationId: 'loginUser', method: 'GET', path: '/user/login', name: 'loginUser', description: 'Log in',
+        specName: 'loginUser', specDescription: 'Log in', inputSchema: loginSchema,
+      },
+    })
+    await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 200, now: NOW }, LOCAL)
+    const rows = await db.toolCallLog.findMany({ where: { projectId: project.id, toolName: 'loginUser' } })
+    const withInput = rows.filter((r) => Object.keys(r.input as object).length > 0)
+    expect(withInput.length).toBeGreaterThan(10)
+    expect(withInput.every((r) => (r.input as Record<string, unknown>)['password'] === '[MASKED]')).toBe(true)
+  })
+})

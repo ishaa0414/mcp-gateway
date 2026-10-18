@@ -60,6 +60,11 @@ export function formatPercent(rate: number | null): string {
   return `${pct === 0 || pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)}%`
 }
 
+/** A sampled count: "at least N", but a plain 0 when nothing was seen. */
+export function formatAtLeast(count: number): string {
+  return count === 0 ? '0' : `at least ${count.toLocaleString('en-US')}`
+}
+
 export function formatBytes(bytes: number | null): string {
   if (bytes === null) return NO_VALUE
   if (bytes < 1024) return `${bytes} B`
