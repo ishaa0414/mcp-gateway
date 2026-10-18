@@ -149,7 +149,7 @@ describe('seeded tool inputs', () => {
     { id: null, name: 'getPet', inputSchema: petSchema, hiddenParams: { region: 'eu' } },
   ]
   const events = buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools, rows: 600, now: NOW })
-  const callsOf = (name: string) => events.filter((e) => e.kind === 'TOOL_CALL' && e.toolName === name && Object.keys(e.input).length > 0)
+  const callsOf = (name: string) => events.filter((e) => e.kind === 'TOOL_CALL' && e.errorClass !== 'VALIDATION' && e.toolName === name && Object.keys(e.input).length > 0)
 
   it('loginUser sends a username and a password, and the password is masked like a real row', () => {
     const logins = callsOf('loginUser')
@@ -179,7 +179,7 @@ describe('seeded tool inputs', () => {
 
   it('the Petstore fallback (no tools) includes loginUser with a masked password', () => {
     const fallback = buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools: [], rows: 3000, now: NOW })
-    const logins = fallback.filter((e) => e.toolName === 'loginUser' && Object.keys(e.input).length > 0)
+    const logins = fallback.filter((e) => e.toolName === 'loginUser' && e.errorClass !== 'VALIDATION' && Object.keys(e.input).length > 0)
     expect(logins.length).toBeGreaterThan(0)
     expect(logins.every((e) => e.input['password'] === '[MASKED]')).toBe(true)
   })
@@ -193,9 +193,114 @@ describe('seeded tool inputs', () => {
       },
     })
     await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 200, now: NOW }, LOCAL)
-    const rows = await db.toolCallLog.findMany({ where: { projectId: project.id, toolName: 'loginUser' } })
+    const rows = await db.toolCallLog.findMany({ where: { projectId: project.id, toolName: 'loginUser', errorClass: { not: 'VALIDATION' } } })
     const withInput = rows.filter((r) => Object.keys(r.input as object).length > 0)
     expect(withInput.length).toBeGreaterThan(10)
     expect(withInput.every((r) => (r.input as Record<string, unknown>)['password'] === '[MASKED]')).toBe(true)
+  })
+})
+
+describe('seeded credentials and contact fields', () => {
+  const run = (tools: { id: null; name: string; inputSchema: unknown }[], rows = 800) =>
+    buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools, rows, now: NOW }).filter((e) => e.kind === 'TOOL_CALL' && e.errorClass !== 'VALIDATION' && Object.keys(e.input).length > 0)
+  const str = { type: 'string' }
+  const int = { type: 'integer' }
+
+  it('Petstore loginUser (both parameters optional) never sends a password without a username', () => {
+    const calls = run([{ id: null, name: 'loginUser', inputSchema: { type: 'object', properties: { password: str, username: str } } }])
+    const withPassword = calls.filter((e) => 'password' in e.input)
+    expect(withPassword.length).toBeGreaterThan(20)
+    for (const e of withPassword) expect(typeof e.input['username']).toBe('string')
+    expect(calls.some((e) => !('password' in e.input))).toBe(true) // optional parameters still vary
+  })
+
+  it("createUser's real property order pairs the password with username, never with email or userStatus", () => {
+    const createUser = {
+      type: 'object',
+      properties: { id: int, email: str, phone: str, lastName: str, password: str, username: str, firstName: str, userStatus: int },
+    }
+    const calls = run([{ id: null, name: 'createUser', inputSchema: createUser }])
+    const withPassword = calls.filter((e) => 'password' in e.input)
+    expect(withPassword.length).toBeGreaterThan(20)
+    for (const e of withPassword) expect(typeof e.input['username']).toBe('string')
+    // email is not forced in by the password: some calls have a password and no email.
+    expect(withPassword.some((e) => !('email' in e.input))).toBe(true)
+  })
+
+  it('pairs with the first exact identity name: username, then login, then email; string-typed only', () => {
+    const only = (properties: Record<string, unknown>) =>
+      run([{ id: null, name: 't', inputSchema: { type: 'object', properties: { password: str, ...properties } } }]).filter((e) => 'password' in e.input)
+    for (const e of only({ email: str, login: str })) expect(typeof e.input['login']).toBe('string')
+    for (const e of only({ email: str })) expect(typeof e.input['email']).toBe('string')
+    for (const e of only({ user_name: str, login: str })) expect(typeof e.input['user_name']).toBe('string')
+    for (const e of only({ USERNAME: str })) expect(typeof e.input['USERNAME']).toBe('string')
+    // userStatus and userId are not identity names, and an integer "username" is not string-typed.
+    const none = only({ userStatus: int, userId: int, username: int })
+    expect(none.length).toBeGreaterThan(20)
+    expect(none.some((e) => !('userStatus' in e.input))).toBe(true)
+    expect(none.some((e) => !('userId' in e.input))).toBe(true)
+    expect(none.some((e) => !('username' in e.input))).toBe(true)
+  })
+
+  it('email and phone look real: <username>@example.com and a fictional 555-01xx number, same every run', () => {
+    const schema = { type: 'object', properties: { email: str, phone: str, username: str } }
+    const calls = run([{ id: null, name: 'createUser', inputSchema: schema }])
+    const withEmail = calls.filter((e) => 'email' in e.input)
+    const withPhone = calls.filter((e) => 'phone' in e.input)
+    expect(withEmail.length).toBeGreaterThan(20)
+    expect(withPhone.length).toBeGreaterThan(20)
+    for (const e of withEmail) {
+      expect(e.input['email']).toMatch(/^[a-z]+@example\.com$/)
+      if ('username' in e.input) expect(e.input['email']).toBe(`${e.input['username']}@example.com`)
+    }
+    for (const e of withPhone) expect(e.input['phone']).toMatch(/^\+1-555-01\d\d$/)
+    expect(run([{ id: null, name: 'createUser', inputSchema: schema }])).toEqual(calls)
+  })
+})
+
+describe('seeded VALIDATION rows', () => {
+  const str = { type: 'string' }
+  const tools = [
+    { id: null, name: 'getPet', inputSchema: { type: 'object', properties: { petId: { type: 'integer', minimum: 1, maximum: 9 }, note: str }, required: ['petId'] } },
+    { id: null, name: 'login', inputSchema: { type: 'object', properties: { username: str, password: str }, required: ['username', 'password'] } },
+    { id: null, name: 'listPets', inputSchema: { type: 'object', properties: { limit: { type: 'integer' }, tag: str, mode: { type: 'string', enum: ['a', 'b'] } } } },
+    { id: null, name: 'ping', inputSchema: { type: 'object', properties: {} } },
+  ]
+  const events = buildSeedEvents({ projectId: 'pid', projectSlug: 'slug', tools, rows: 4000, now: NOW })
+  const validation = events.filter((e) => e.errorClass === 'VALIDATION')
+
+  it('every error message matches the input that was stored', () => {
+    expect(validation.length).toBeGreaterThan(30)
+    const kinds = new Set<string>()
+    for (const e of validation) {
+      const missing = /^Invalid arguments for "(\w+)": data must have required property '(\w+)'$/.exec(e.errorMessage ?? '')
+      const wrongType = /^Invalid arguments for "(\w+)": data\/(\w+) must be (\w+)$/.exec(e.errorMessage ?? '')
+      expect(missing ?? wrongType).not.toBeNull()
+      if (missing) {
+        expect(missing[1]).toBe(e.toolName)
+        expect(e.input).not.toHaveProperty(missing[2]!)
+        kinds.add('missing')
+      } else {
+        expect(wrongType![1]).toBe(e.toolName)
+        const value = e.input[wrongType![2]!]
+        expect(value).toBeDefined()
+        expect(typeof value === 'number' ? 'number' : typeof value).not.toBe(wrongType![3] === 'integer' ? 'number' : wrongType![3])
+        kinds.add('type')
+      }
+    }
+    expect(kinds).toEqual(new Set(['missing', 'type']))
+    expect(validation.some((e) => Object.keys(e.input).length > 0)).toBe(true)
+  })
+
+  it('a tool with nothing to get wrong never has a VALIDATION row, and enum fields are never the wrong-typed one', () => {
+    expect(validation.some((e) => e.toolName === 'ping')).toBe(false)
+    expect(validation.some((e) => e.toolName === 'listPets' && /\/mode /.test(e.errorMessage ?? ''))).toBe(false)
+  })
+
+  it('goes through the masker like every other row', () => {
+    const login = validation.filter((e) => e.toolName === 'login' && 'password' in e.input)
+    expect(login.length).toBeGreaterThan(0)
+    expect(login.every((e) => e.input['password'] === '[MASKED]')).toBe(true)
+    expect(JSON.stringify(validation)).not.toMatch(/-Pw!/)
   })
 })

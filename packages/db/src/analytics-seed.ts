@@ -1,7 +1,7 @@
 import type { LogErrorClass, LogEvent } from '@mcp-gateway/shared/log-event'
 import type { PrismaClient } from './generated/client/client.js'
 import { writeLogBatch } from './log-store.js'
-import { sampleToolInput } from './seed-input.js'
+import { sampleInvalidInput, sampleToolInput } from './seed-input.js'
 
 /**
  * Development helper: fill a project with realistic call logs so the analytics dashboard has
@@ -57,7 +57,7 @@ const object = (properties: Record<string, unknown>, required: string[] = []) =>
 const STATUS = { type: 'string', enum: ['available', 'pending', 'sold'] }
 
 /** Used when the project has no tools: Petstore-shaped, so the inputs still look like real arguments. */
-const FALLBACK_TOOLS: SeedToolSource[] = [
+export const FALLBACK_SEED_TOOLS: SeedToolSource[] = [
   { id: null, name: 'listPets', inputSchema: object({ limit: int(1, 100) }) },
   { id: null, name: 'getPetById', inputSchema: object({ petId: int(1, 500) }, ['petId']) },
   { id: null, name: 'findPetsByStatus', inputSchema: object({ status: STATUS }, ['status']) },
@@ -68,7 +68,7 @@ const FALLBACK_TOOLS: SeedToolSource[] = [
   { id: null, name: 'loginUser', inputSchema: object({ username: { type: 'string' }, password: { type: 'string' } }, ['username', 'password']) },
 ]
 
-interface SeedToolSource {
+export interface SeedToolSource {
   id: string | null
   name: string
   /** The tool's real input schema; its parameters decide what a seeded call sends. */
@@ -96,7 +96,7 @@ export function buildSeedEvents(params: {
     return Math.max(1, Math.round(median * Math.exp(sigma * normal)))
   }
 
-  const source = params.tools.length > 0 ? params.tools : FALLBACK_TOOLS
+  const source = params.tools.length > 0 ? params.tools : FALLBACK_SEED_TOOLS
   const tools: SeedTool[] = source.map((t, i) => ({
     ...t,
     medianMs: 60 + ((i * 97) % 500), // varied per tool
@@ -142,16 +142,18 @@ export function buildSeedEvents(params: {
     const tool = pickTool()
     const base = { id, kind: 'TOOL_CALL' as const, projectId, apiKeyId: null, toolId: tool.id, toolName: tool.name, timestamp }
     const input = sampleToolInput(tool.inputSchema, tool.hiddenParams, random)
+    // A tool with nothing to get wrong has no validation failure; that roll becomes an upstream 4xx below.
+    const invalid = roll >= 0.035 && roll < 0.055 ? sampleInvalidInput(tool.name, tool.inputSchema, tool.hiddenParams, random) : null
 
     if (roll < 0.035) {
       events.push({
         ...base, input, upstreamStatus: null, latencyMs: 0, success: false,
         errorClass: 'RATE_LIMITED', errorMessage: 'Rate limit exceeded', responseBytes: null,
       })
-    } else if (roll < 0.055) {
+    } else if (invalid) {
       events.push({
-        ...base, input: {}, upstreamStatus: null, latencyMs: between(1, 6), success: false,
-        errorClass: 'VALIDATION', errorMessage: `Invalid arguments for "${tool.name}": id must be integer`, responseBytes: null,
+        ...base, input: invalid.input, upstreamStatus: null, latencyMs: between(1, 6), success: false,
+        errorClass: 'VALIDATION', errorMessage: invalid.errorMessage, responseBytes: null,
       })
     } else if (roll < 0.1) {
       const status = [400, 404, 404, 422][pick(4)]!
