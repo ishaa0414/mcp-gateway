@@ -2,7 +2,7 @@
 
 Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server that AI agents can connect to — in 10 minutes.
 
-> **Status:** Phase 4 in review — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging and an analytics dashboard.
+> **Status:** Phase 4 done, Phase 5a (playground and connection guides) in progress — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging and an analytics dashboard.
 
 ## Prerequisites
 
