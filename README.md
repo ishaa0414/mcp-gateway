@@ -2,7 +2,7 @@
 
 Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server that AI agents can connect to — in 10 minutes.
 
-> **Status:** Phase 3 — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting and call logging. The analytics dashboard is next.
+> **Status:** Phase 4 in review — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging and an analytics dashboard.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ pnpm dev           # Start all apps
 pnpm build         # Build all apps and packages
 pnpm lint          # Lint all packages
 pnpm typecheck     # Typecheck all packages
-pnpm test          # Run all tests
+pnpm test          # Run all tests (each package gets its own Postgres test database; see CLAUDE.md)
 
 pnpm db:generate   # Re-generate Prisma client
 pnpm db:migrate    # Run pending migrations (dev)
@@ -90,6 +90,18 @@ curl http://localhost:4000/health
    npx @modelcontextprotocol/inspector --cli http://localhost:4000/mcp/<slug> --transport http \
      --header "Authorization: Bearer <your key>" --method tools/list
    ```
+
+## Analytics
+
+The **Analytics** tab of a project shows, for the last 24 hours, 7 days or 30 days (in your time zone): calls over time, error rate, p50 and p95 latency, the busiest tools, and a table of recent calls. Open a row to see its masked arguments and error message.
+
+Rate-limited calls and auth failures are sampled when they are logged, so they show as "at least N" and are left out of the headline numbers.
+
+To fill a project with demo data (local development database only; the script refuses production and non-local hosts):
+
+```bash
+pnpm db:seed:analytics --project <slug>   # add --rows N for more; re-running replaces the previous seed rows
+```
 
 ## Run the gateway in Docker
 

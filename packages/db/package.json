@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./test-database": {
+      "import": "./dist/test-database.js",
+      "types": "./dist/test-database.d.ts"
     }
   },
   "main": "./dist/index.js",
@@ -20,6 +24,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "migrate:reset": "prisma migrate reset",
     "seed": "tsx prisma/seed.ts",
+    "seed:analytics": "tsx prisma/seed-analytics.ts",
     "studio": "prisma studio"
   },
   "dependencies": {

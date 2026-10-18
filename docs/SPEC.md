@@ -47,7 +47,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 apps/
   web/        Next.js dashboard (UI + dashboard API)
   gateway/    Fastify MCP gateway (public, multi-tenant)
-  worker/     BullMQ log consumer + analytics rollups
+  worker/     BullMQ log consumer + log retention
 packages/
   db/              Prisma schema, client, migrations, seed
   shared/          Zod schemas, shared types, constants
@@ -109,16 +109,16 @@ Monorepo (pnpm + Turborepo), TypeScript strict, ESLint/Prettier, Docker Compose 
 Auth.js v5 (GitHub OAuth + email/password with argon2), projects CRUD, OpenAPI 3.0/3.1 import (file upload + SSRF-safe URL fetch in `packages/shared`), endpoint→tool conversion in `packages/openapi-tools` (heavily unit-tested with fixtures), tool editing UI (enable/disable, rename, description, hidden params, JSON schema preview). shadcn/ui dashboard layout (sidebar + tabs).
 *Done when:* user can sign in, create a project, import the Petstore spec, and curate tools. Every DB query is scoped to the signed-in user. Tests cover conversion logic and cross-user access control.
 
-**Phase 2: Hosted MCP Server** ✅ *Implemented, in review*
+**Phase 2: Hosted MCP Server** ✅ *Done*
 `/mcp/:projectSlug` (Streamable HTTP). Start with a small hand-written spike to learn the current SDK. Then wire it to enabled tools from Redis cache (fallback to Postgres). API-key auth (hashed, shown once, revocable). Upstream API auth (encrypted credentials). SSRF protection + timeouts + response size limits reusing the helper from Phase 1.
 *Done when:* MCP Inspector connected to `/mcp/petstore` lists enabled tools and a `tools/call` returns real upstream data.
 
-**Phase 3: Rate Limiting and Logging** ✅ *Implemented, in review*
+**Phase 3: Rate Limiting and Logging** ✅ *Done*
 Redis sliding-window rate limiting per API key (HTTP 429 with a clear JSON-RPC body). Gateway buffers log events and writes batches (BullMQ and the worker, or directly to Postgres in deploy mode); sensitive fields masked; retention. No UsageRollup (see §5).
 *Done when:* exceeded limit returns a clear error; every call appears in Postgres within seconds. Integration tests for both.
 
-**Phase 4: Analytics Dashboard**
-Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library.
+**Phase 4: Analytics Dashboard** 🟡 *In review*
+Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library. *Deviation:* the chart is hand-rolled SVG, with no library (see the "Analytics tab" entry in [DECISIONS.md](DECISIONS.md#analytics-tab-zone-from-a-cookie-range-in-the-url-actions-return-results)).
 *Done when:* dashboard shows real data from seeded/test calls.
 
 **Phase 5: Playground, Connection Instructions, Polish, Deploy**

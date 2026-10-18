@@ -65,14 +65,8 @@ jobs:
       - name: Apply migrations (dev DB)
         run: pnpm db:migrate:deploy
 
-      - name: Create test database
-        run: |
-          psql postgresql://postgres:postgres@localhost:5432 -c "CREATE DATABASE mcpgateway_test;" || true
-
-      - name: Apply migrations (test DB)
-        run: pnpm db:migrate:deploy
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mcpgateway_test
+      # No step for the test databases: each package's test global-setup creates its own
+      # (mcpgateway_test_web, _gateway, _worker) and migrates it, so suites never share rows.
 
       - name: Lint
         run: pnpm lint

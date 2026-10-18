@@ -120,6 +120,21 @@ request path --enqueue (sync, never throws)--> BufferedLogSink --batch--> writer
 - **Tenancy.** The writer keeps a tool or key id only if it belongs to the event's own project, and resolves a slug to a project itself; unknown slugs are dropped.
 - **Retention.** `purgeOldLogs` (`packages/db`) deletes in batches of 5000 and is idempotent. Both modes run it once about a minute after boot (with jitter), then every 6 h. Queue mode: the worker, on an idempotent BullMQ job scheduler whose first run is delayed with `startDate`. Direct mode: the gateway, with timers. A host that sleeps when idle also writes no logs while asleep, so the run at wake-up is enough. Several instances running it together is harmless.
 
+## Analytics
+
+The Analytics tab reads the raw `tool_call_logs` table. There is no rollup table.
+
+```
+tool_call_logs --SQL (apps/web/src/lib/analytics/queries.ts)--> server component (analytics/page.tsx) --> cards, SVG chart, top tools, recent calls
+                                                                 `-- "load more" and the detail dialog: server actions
+```
+
+- **Tenancy.** Every query function takes `{ userId, slug }` and first resolves `ownedProjectId` (`WHERE slug = $1 AND user_id = $2`). Every log query then filters on that id, which is passed as a bound parameter. A project the user does not own gives `null`, the same as an unknown slug. See [the decision](DECISIONS.md#analytics-resolve-the-owned-project-id-first-then-query-logs-by-that-id).
+- **Window.** The window is made of the buckets themselves: 24 hourly buckets, or 7 or 30 local days including today, aligned to the viewer's time zone (a cookie) and chosen by `?range=`. The cards, chart, top tools and recent calls all share its start, so the numbers on the page add up. Timestamps are stored as UTC wall-clock and converted explicitly in SQL. See [which window](DECISIONS.md#analytics-what-counts-and-which-window), [UTC wall-clock](DECISIONS.md#analytics-instants-leave-sql-as-utc-wall-clock-bounds-are-converted-explicitly) and [cookie and URL](DECISIONS.md#analytics-tab-zone-from-a-cookie-range-in-the-url-actions-return-results).
+- **What counts.** A call is a `TOOL_CALL` row that is not `RATE_LIMITED`. Rate-limited and auth-failure rows are sampled (see Call logging), so they show only as "at least N" and are left out of the headline numbers.
+- **Why no rollups.** With the project id as a bound parameter, the `(project_id, created_at)` index keeps these queries under a millisecond for a small tenant on a large table (measured in the first decision above), and a worker-written rollup would not exist in the worker-less deploy mode. See [the decision](DECISIONS.md#usagerollup-removed-phase-4-reads-the-raw-logs).
+- **Demo data.** `pnpm db:seed:analytics --project <slug>` fills a project with realistic rows through the same write path and masker as real ones. It refuses production and non-local databases. See [seed inputs](DECISIONS.md#analytics-seed-inputs-come-from-each-tools-schema-and-go-through-the-real-masker).
+
 ## Caching and invalidation
 
 Redis only caches what Postgres already holds, so a Redis failure is a cache miss, never an outage.

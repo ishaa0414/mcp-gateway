@@ -2,7 +2,7 @@
  * Access control integration tests.
  *
  * Proves that user A cannot read or modify user B's projects or tools.
- * Uses the mcpgateway_test database (DATABASE_URL_TEST).
+ * Uses the web suite's own test database (mcpgateway_test_web, derived from DATABASE_URL_TEST).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { db } from '@mcp-gateway/db'

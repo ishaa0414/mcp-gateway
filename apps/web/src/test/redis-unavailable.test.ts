@@ -56,7 +56,8 @@ beforeAll(async () => {
       },
     })
   ).id
-})
+  // 60 s: this hook cold-imports the whole action graph, which took 8 s instead of 2.5 s when the CPU was starved.
+}, 60_000)
 
 afterAll(async () => {
   await db.user.deleteMany({ where: { id: { in: users } } })

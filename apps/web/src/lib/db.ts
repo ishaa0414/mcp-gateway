@@ -2,4 +2,4 @@
 // Not placed in packages/db because the gateway and worker run outside React.
 import 'server-only'
 
-export { db } from '@mcp-gateway/db'
+export { db, Prisma } from '@mcp-gateway/db'
