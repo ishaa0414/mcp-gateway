@@ -71,12 +71,14 @@ describe('purgeOldLogs (used by both sink modes)', () => {
 
   it('uses the clock it is given', async () => {
     const fx = await createFixture()
-    const e = toolCall(fx, { timestamp: Date.now() })
+    // 25 days old: inside the 30-day period on the real clock, outside it on a clock 10 days ahead.
+    // The shifted cutoff (20 days ago) reaches only rows this old, not other test files' fresh rows.
+    const e = toolCall(fx, { timestamp: Date.now() - 25 * DAY })
     await writeLogBatch(db, [e])
 
-    await purgeOldLogs(db, { days: 30, now: () => Date.now() + 10 * DAY })
+    await purgeOldLogs(db, { days: 30 })
     expect(await rowsOf([e.id])).toHaveLength(1)
-    await purgeOldLogs(db, { days: 30, now: () => Date.now() + 31 * DAY })
+    await purgeOldLogs(db, { days: 30, now: () => Date.now() + 10 * DAY })
     expect(await rowsOf([e.id])).toHaveLength(0)
   })
 })

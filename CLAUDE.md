@@ -45,3 +45,11 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - The Bash tool on Windows is Git Bash: write paths with forward slashes (`D:/mcp-gateway/...`) or quote them. An unquoted `D:\mcp-gateway\apps` loses its backslashes and creates a stray folder literally named `D:mcp-gatewayapps`.
 
 Always read docs/SPEC.md before starting any phase.
+
+## Running the tests locally
+
+- Postgres and Redis must be up (`docker compose up -d`; ask before starting them). Then `pnpm test` from the root runs every package through Turborepo, in parallel.
+- Each package that touches Postgres has its **own test database**, created and migrated by its vitest `global-setup.ts` (`prepareTestDatabase` in `@mcp-gateway/db/test-database`): `mcpgateway_test_web`, `mcpgateway_test_gateway`, `mcpgateway_test_worker`. Nothing to create by hand, in CI either. `DATABASE_URL_TEST` (default `.../mcpgateway_test`) is only the base name they are derived from; the plain `mcpgateway_test` database is no longer used.
+- Never point two packages' tests at one database: the log-retention tests (`purgeOldLogs`) delete rows table-wide, with real and shifted clocks, and would remove another package's rows mid-run. A new package that needs Postgres gets its own suite name, not a shared database.
+- Tests use Redis database 1 (the dev gateway uses 0). BullMQ queue names in tests carry a random suffix, so packages do not share queues.
+- One package: `pnpm --filter @mcp-gateway/web test`.

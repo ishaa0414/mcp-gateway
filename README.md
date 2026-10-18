@@ -57,7 +57,7 @@ pnpm dev           # Start all apps
 pnpm build         # Build all apps and packages
 pnpm lint          # Lint all packages
 pnpm typecheck     # Typecheck all packages
-pnpm test          # Run all tests
+pnpm test          # Run all tests (each package gets its own Postgres test database; see CLAUDE.md)
 
 pnpm db:generate   # Re-generate Prisma client
 pnpm db:migrate    # Run pending migrations (dev)
