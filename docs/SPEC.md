@@ -47,7 +47,7 @@ A SaaS platform that lets a small software team **turn its REST API (described b
 apps/
   web/        Next.js dashboard (UI + dashboard API)
   gateway/    Fastify MCP gateway (public, multi-tenant)
-  worker/     BullMQ log consumer + analytics rollups
+  worker/     BullMQ log consumer + log retention
 packages/
   db/              Prisma schema, client, migrations, seed
   shared/          Zod schemas, shared types, constants
@@ -117,8 +117,8 @@ Auth.js v5 (GitHub OAuth + email/password with argon2), projects CRUD, OpenAPI 3
 Redis sliding-window rate limiting per API key (HTTP 429 with a clear JSON-RPC body). Gateway buffers log events and writes batches (BullMQ and the worker, or directly to Postgres in deploy mode); sensitive fields masked; retention. No UsageRollup (see §5).
 *Done when:* exceeded limit returns a clear error; every call appears in Postgres within seconds. Integration tests for both.
 
-**Phase 4: Analytics Dashboard**
-Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library.
+**Phase 4: Analytics Dashboard** 🟡 *In review*
+Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library. *Deviation:* the chart is hand-rolled SVG, with no library (see the "Analytics tab" entry in [DECISIONS.md](DECISIONS.md#analytics-tab-zone-from-a-cookie-range-in-the-url-actions-return-results)).
 *Done when:* dashboard shows real data from seeded/test calls.
 
 **Phase 5: Playground, Connection Instructions, Polish, Deploy**

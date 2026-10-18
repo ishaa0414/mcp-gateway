@@ -28,7 +28,7 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - **Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** ✅ Done (merged to main)
 - **Phase 2: Hosted MCP Server** ✅ Done (merged to main, #3)
 - **Phase 3: Rate Limiting and Logging** ✅ Done (merged to main, #4)
-- **Phase 4: Analytics Dashboard** — future
+- **Phase 4: Analytics Dashboard** — 🟡 In review (branch phase-4-analytics)
 - **Phase 5: Playground, Polish, Deploy** — future
 
 ## Working Rules (from spec §10)
