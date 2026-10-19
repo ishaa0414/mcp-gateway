@@ -1,4 +1,4 @@
-import { DEFAULT_LOG_RETENTION_DAYS, PLAYGROUND_MIN_SECRET_BYTES, z } from '@mcp-gateway/shared'
+import { DEFAULT_LOG_RETENTION_DAYS, DEFAULT_TOOL_CALL_TIMEOUT_MS, PLAYGROUND_MIN_SECRET_BYTES, z } from '@mcp-gateway/shared'
 
 const port = z.coerce.number().int().min(1).max(65535)
 
@@ -22,7 +22,7 @@ export const gatewayEnvSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
-    TOOL_CALL_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
+    TOOL_CALL_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     TOOL_RESPONSE_MAX_BYTES: z.coerce.number().int().min(1024).max(10 * 1024 * 1024).default(1024 * 1024),
     CONFIG_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
     API_KEY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),

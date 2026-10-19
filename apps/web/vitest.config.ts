@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 import path from 'node:path'
 
 export default defineConfig({
+  // tsconfig keeps JSX for Next to compile; tests that import a page or component need it compiled.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     globalSetup: './src/test/global-setup.ts',
