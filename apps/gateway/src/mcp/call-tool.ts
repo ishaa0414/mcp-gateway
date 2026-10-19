@@ -180,6 +180,18 @@ export interface UpstreamCall {
 }
 
 export const DISPLAY_BODY_CHARS = 100_000
+
+/**
+ * What a hidden value contributes to the redaction list. Text, and the JSON of an object or array, can
+ * be a token. null (never sent), true/false and numbers cannot: as text they are ordinary words in a
+ * response ("null", "false", "1234"), and masking them would garble every body. (The request preview
+ * does not rely on this: it hides them structurally.)
+ */
+const hiddenSecret = (value: unknown): string[] => {
+  if (typeof value === 'string') return value === '' ? [] : [value]
+  if (typeof value === 'object' && value !== null) return [JSON.stringify(value)]
+  return []
+}
 /** Shown in place of a credential. */
 const CREDENTIAL_PLACEHOLDER = '••••'
 /** Shown in place of a hidden parameter's value. */
@@ -188,6 +200,15 @@ const HIDDEN_PLACEHOLDER = 'HIDDEN'
 // Everything else (set-cookie, authorization echoes, server internals) is dropped.
 const SHOWN_RESPONSE_HEADERS = new Set(['content-type', 'content-length', 'date', 'cache-control', 'etag', 'last-modified', 'retry-after'])
 const isShownResponseHeader = (name: string) => SHOWN_RESPONSE_HEADERS.has(name) || name.startsWith('ratelimit-') || name.startsWith('x-ratelimit-')
+
+/**
+ * The hidden parameters as arguments. A hidden parameter fixed to `null` means "never send it": it
+ * becomes `undefined`, which still overrides whatever the caller sent under that name, and the
+ * request builder then leaves it out (as a query, header or body field alike).
+ */
+function hiddenArguments(hidden: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(hidden).map(([name, value]) => [name, value ?? undefined]))
+}
 
 /** Rewrite each `name=value` pair of a URL's query; return null from `fn` to drop a pair. */
 function rewriteQuery(url: string, fn: (name: string, pair: string) => string | null): string {
@@ -244,7 +265,8 @@ function previewRequest(project: ProjectConfig, tool: CachedTool, args: Record<s
   let shown = built
   if (Object.keys(tool.hidden).length > 0) {
     try {
-      const placeholders = Object.fromEntries(Object.keys(tool.hidden).map((name) => [name, HIDDEN_PLACEHOLDER]))
+      // A hidden parameter fixed to null is not sent, so there is nothing to show for it.
+      const placeholders = Object.fromEntries(Object.entries(tool.hidden).map(([name, value]) => [name, value === null || value === undefined ? undefined : HIDDEN_PLACEHOLDER]))
       shown = buildRequest({ baseUrl: project.upstreamBaseUrl, method: tool.method, path: tool.path, map: tool.requestMap, args: { ...args, ...placeholders } })
     } catch {
       // The placeholders did not fit (cannot happen for the real build to have succeeded, but never fail a call over a preview).
@@ -339,7 +361,7 @@ export async function callUpstream(
       map: tool.requestMap,
       // Hidden parameters are fixed server-side: they come last so they always win over
       // anything the agent sent under the same name (the agent's schema does not list them).
-      args: { ...args, ...tool.hidden },
+      args: { ...args, ...hiddenArguments(tool.hidden) },
     })
   } catch (err) {
     if (err instanceof RequestBuildError) return { outcome: fail(err.message, 'REQUEST_BUILD') }
@@ -349,9 +371,7 @@ export async function callUpstream(
   // --- upstream credential ---
   const secrets: string[] = []
   // What a preview must also never contain: the credential and every hidden value.
-  const previewSecrets: string[] = options.preview
-    ? Object.values(tool.hidden).flatMap((v) => (v === undefined || v === null ? [] : [typeof v === 'string' ? v : JSON.stringify(v)]))
-    : []
+  const previewSecrets: string[] = options.preview ? Object.values(tool.hidden).flatMap(hiddenSecret) : []
   const request = options.preview ? () => ({ request: previewRequest(project, tool, args, built, previewSecrets) }) : () => ({})
   let url = built.url
   const headers = { ...built.headers }

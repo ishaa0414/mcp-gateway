@@ -10,6 +10,8 @@ export interface PlaygroundTool {
   method: string
   path: string
   fields: PlaygroundField[]
+  /** Whether a hidden parameter's value is sent with this tool. Only this fact is sent, never a name or value. */
+  hasHidden: boolean
 }
 
 /**
@@ -34,5 +36,6 @@ export async function playgroundTools(scope: { userId: string; slug: string }): 
     method: t.method.toUpperCase(),
     path: t.path,
     fields: buildFields(toAgentSchema(t.inputSchema as object, (t.hiddenParams ?? {}) as object)),
+    hasHidden: Object.values((t.hiddenParams ?? {}) as Record<string, { value?: unknown } | null>).some((cfg) => cfg?.value !== null && cfg?.value !== undefined),
   }))
 }

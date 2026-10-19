@@ -38,7 +38,7 @@ function Text({ children, label }: { children: string; label: string }) {
   )
 }
 
-function RequestSection({ request }: { request: RequestPreview }) {
+function RequestSection({ request, note }: { request: RequestPreview; note: string | null }) {
   return (
     <section className="space-y-2" aria-label="Request">
       <div className="flex items-center justify-between gap-2">
@@ -50,7 +50,7 @@ function RequestSection({ request }: { request: RequestPreview }) {
       </p>
       <Headers headers={request.headers} />
       {request.body !== undefined && <Text label="Request body">{readable(request.body, request.headers['content-type'])}</Text>}
-      <p className="text-xs text-muted-foreground">Your stored credential and hidden parameters are hidden here; the real request carries them.</p>
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
     </section>
   )
 }
@@ -91,7 +91,7 @@ function RunSummary({ run }: { run: PlaygroundRun }) {
   )
 }
 
-export function ResultPanel({ result }: { result: PlaygroundResult }) {
+export function ResultPanel({ result, note }: { result: PlaygroundResult; note: string | null }) {
   if (result.status !== 'ok') {
     const warning = result.status === 'invalid' || result.status === 'rate_limited'
     return (
@@ -114,7 +114,7 @@ export function ResultPanel({ result }: { result: PlaygroundResult }) {
             {run.message}
           </p>
         )}
-        {run.request ? <RequestSection request={run.request} /> : <p className="text-sm text-muted-foreground">No request was made.</p>}
+        {run.request ? <RequestSection request={run.request} note={note} /> : <p className="text-sm text-muted-foreground">No request was made.</p>}
         {run.response && <ResponseSection response={run.response} />}
       </CardContent>
     </Card>

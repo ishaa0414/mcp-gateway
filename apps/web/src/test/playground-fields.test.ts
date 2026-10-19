@@ -1,6 +1,6 @@
 import { toAgentSchema } from '@mcp-gateway/openapi-tools'
 import { describe, expect, it } from 'vitest'
-import { buildFields, toArguments, type PlaygroundField } from '@/lib/playground/fields'
+import { buildFields, toArguments, toFieldText, type PlaygroundField } from '@/lib/playground/fields'
 
 const schema = {
   type: 'object',
@@ -34,8 +34,8 @@ describe('buildFields', () => {
     expect(fields.find((f) => f.name === 'level')?.options).toEqual([1, 2, 3])
   })
 
-  it('falls back to a JSON field for objects, arrays, unions, several types, no type, and enums of non-scalars', () => {
-    expect(kinds).toMatchObject({ tags: 'json', owner: 'json', either: 'json', anything: 'json', maybe: 'json', mixedEnum: 'json' })
+  it('falls back to a JSON field for objects, unions, several types, no type, and enums of non-scalars', () => {
+    expect(kinds).toMatchObject({ tags: 'list', owner: 'json', either: 'json', anything: 'json', maybe: 'json', mixedEnum: 'json' })
   })
 
   it('marks required fields and carries descriptions', () => {
@@ -74,7 +74,7 @@ describe('toArguments', () => {
   const args = (values: Record<string, string>) => toArguments(fields, values)
 
   it('converts each kind to its type and leaves blank fields out', () => {
-    expect(args({ petId: '7', price: '9.5', name: 'Rex', sold: 'false', status: '1', level: '2', tags: '["a","b"]', owner: ' {"id": 3} ', price2: 'ignored' })).toEqual({
+    expect(args({ petId: '7', price: '9.5', name: 'Rex', sold: 'false', status: '1', level: '2', tags: 'a\nb', owner: ' {"id": 3} ', price2: 'ignored' })).toEqual({
       ok: true,
       arguments: { petId: 7, price: 9.5, name: 'Rex', sold: false, status: 'pending', level: 3, tags: ['a', 'b'], owner: { id: 3 } },
     })
@@ -94,15 +94,72 @@ describe('toArguments', () => {
   })
 
   it('reports JSON that does not parse, with the parser message', () => {
-    const result = args({ tags: '[1, 2', owner: '{"id": 3}' })
+    const result = args({ owner: '{"id": ', price: '1' })
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(Object.keys(result.errors)).toEqual(['tags'])
-      expect(result.errors['tags']).toMatch(/^Not valid JSON: /)
+      expect(Object.keys(result.errors)).toEqual(['owner'])
+      expect(result.errors['owner']).toMatch(/^Not valid JSON: /)
     }
   })
 
   it('reports a chosen option that does not exist', () => {
     expect(args({ status: '9' })).toEqual({ ok: false, errors: { status: 'Choose one of the listed values.' } })
+  })
+})
+
+describe('lists of plain values', () => {
+  const listSchema = (items: unknown) => buildFields({ type: 'object', properties: { xs: { type: 'array', items } } })[0]!
+
+  it('an array of strings, numbers, integers or booleans is a list with that item type', () => {
+    for (const type of ['string', 'number', 'integer', 'boolean']) {
+      expect(listSchema({ type })).toMatchObject({ kind: 'list', itemKind: type })
+    }
+    expect(listSchema({ type: 'string', format: 'uri' })).toMatchObject({ kind: 'list', itemKind: 'string' })
+  })
+
+  it('stays JSON for items with a choice, objects, nested arrays, unions and a missing item type', () => {
+    for (const items of [{ type: 'string', enum: ['a', 'b'] }, { type: 'object' }, { type: 'array', items: { type: 'string' } }, { oneOf: [{ type: 'string' }] }, {}, undefined]) {
+      expect(listSchema(items).kind).toBe('json')
+    }
+  })
+
+  const field = listSchema({ type: 'string' })
+  const numbers = listSchema({ type: 'integer' })
+  const booleans = listSchema({ type: 'boolean' })
+
+  it('takes one value per line, trimmed, ignoring blank lines and Windows line ends', () => {
+    expect(toArguments([field], { xs: ' https://example.com/a.jpg \r\n\r\n  \nhttps://example.com/b.jpg\n' })).toEqual({
+      ok: true,
+      arguments: { xs: ['https://example.com/a.jpg', 'https://example.com/b.jpg'] },
+    })
+  })
+
+  it('leaves the field out when it holds no value', () => {
+    expect(toArguments([field], { xs: '\n  \n' })).toEqual({ ok: true, arguments: {} })
+  })
+
+  it('reads numbers and booleans per line, and names the line that does not fit', () => {
+    expect(toArguments([numbers], { xs: '1\n2.5\n-3' })).toEqual({ ok: true, arguments: { xs: [1, 2.5, -3] } })
+    expect(toArguments([booleans], { xs: 'true\nfalse' })).toEqual({ ok: true, arguments: { xs: [true, false] } })
+    expect(toArguments([numbers], { xs: '1\nabc\n3' })).toEqual({ ok: false, errors: { xs: 'Line 2 is not a number.' } })
+    expect(toArguments([booleans], { xs: 'true\nyes' })).toEqual({ ok: false, errors: { xs: 'Line 2 is not true or false.' } })
+  })
+})
+
+describe('toFieldText: a stored value back to form text', () => {
+  const fields = buildFields(schema)
+  const byName = (name: string) => fields.find((f) => f.name === name)!
+
+  it('is the reverse of toArguments for each kind', () => {
+    const values = { petId: 7, price: 9.5, name: 'Rex', sold: false, status: 'pending', level: 3, tags: ['a', 'b'], owner: { id: 3 } }
+    const text = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, toFieldText(byName(name), value)]))
+    expect(text).toMatchObject({ petId: '7', price: '9.5', name: 'Rex', sold: 'false', status: '1', level: '2', tags: 'a\nb' })
+    expect(toArguments(fields, text)).toEqual({ ok: true, arguments: values })
+  })
+
+  it('is empty for null, undefined and a value that is not one of the options', () => {
+    expect(toFieldText(byName('name'), null)).toBe('')
+    expect(toFieldText(byName('name'), undefined)).toBe('')
+    expect(toFieldText(byName('status'), 'unknown')).toBe('')
   })
 })

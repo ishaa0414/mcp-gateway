@@ -5,7 +5,8 @@
  * else (objects, arrays, unions, unknown types) is a JSON text field.
  */
 
-export type FieldKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'json'
+export type FieldKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'list' | 'json'
+export type ScalarKind = 'string' | 'number' | 'integer' | 'boolean'
 export type EnumValue = string | number | boolean
 
 export interface PlaygroundField {
@@ -15,17 +16,30 @@ export interface PlaygroundField {
   description?: string
   /** For `enum`: the allowed values, as the schema lists them. */
   options?: EnumValue[]
+  /** For `list`: the type of each item; the form has one value per line. */
+  itemKind?: ScalarKind
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isEnumValue = (v: unknown): v is EnumValue => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
 
-function kindOf(schema: unknown): Pick<PlaygroundField, 'kind' | 'options'> {
+const SCALARS = ['string', 'number', 'integer', 'boolean']
+const CONSTRAINING = ['enum', 'const', 'oneOf', 'anyOf', 'allOf', 'not', '$ref']
+
+function kindOf(schema: unknown): Pick<PlaygroundField, 'kind' | 'options' | 'itemKind'> {
   if (!isRecord(schema)) return { kind: 'json' }
   const options = schema['enum']
   if (Array.isArray(options) && options.length > 0 && options.every(isEnumValue)) return { kind: 'enum', options }
   // A union or composition has no single control.
   if (['oneOf', 'anyOf', 'allOf', 'not', '$ref'].some((k) => k in schema)) return { kind: 'json' }
+  if (schema['type'] === 'array') {
+    // An array of plain values is typed one value per line. Items with a choice, objects and nested arrays stay JSON.
+    const items = schema['items']
+    if (isRecord(items) && typeof items['type'] === 'string' && SCALARS.includes(items['type']) && !CONSTRAINING.some((k) => k in items)) {
+      return { kind: 'list', itemKind: items['type'] as ScalarKind }
+    }
+    return { kind: 'json' }
+  }
   switch (schema['type']) {
     case 'string':
     case 'number':
@@ -53,6 +67,37 @@ export function buildFields(agentSchema: unknown): PlaygroundField[] {
 
 /** What the form holds for each field: text for most, the index of the chosen option for an enum ('' for none). */
 export type FieldValues = Record<string, string>
+
+/** One line of a list field as a value of the item type, or undefined when it does not fit. */
+function itemOf(kind: ScalarKind, text: string): string | number | boolean | undefined {
+  switch (kind) {
+    case 'string':
+      return text
+    case 'boolean':
+      return text === 'true' ? true : text === 'false' ? false : undefined
+    default: {
+      const n = Number(text)
+      return Number.isNaN(n) ? undefined : n
+    }
+  }
+}
+
+/** A stored value as the text the form holds for it: the reverse of `toArguments` for one field. */
+export function toFieldText(field: PlaygroundField, value: unknown): string {
+  if (value === undefined || value === null) return ''
+  switch (field.kind) {
+    case 'enum': {
+      const index = field.options?.findIndex((o) => o === value) ?? -1
+      return index >= 0 ? String(index) : ''
+    }
+    case 'list':
+      return Array.isArray(value) ? value.map(String).join('\n') : ''
+    case 'json':
+      return JSON.stringify(value, null, 2)
+    default:
+      return String(value)
+  }
+}
 
 export type ArgumentsResult = { ok: true; arguments: Record<string, unknown> } | { ok: false; errors: Record<string, string> }
 
@@ -88,6 +133,21 @@ export function toArguments(fields: readonly PlaygroundField[], values: FieldVal
         const option = f.options?.[Number(raw)]
         if (option === undefined) errors[f.name] = 'Choose one of the listed values.'
         else args[f.name] = option
+        break
+      }
+      case 'list': {
+        const items: unknown[] = []
+        for (const [index, line] of raw.split(/\r?\n/).entries()) {
+          const text = line.trim()
+          if (text === '') continue
+          const item = itemOf(f.itemKind ?? 'string', text)
+          if (item === undefined) {
+            errors[f.name] = `Line ${index + 1} is not ${f.itemKind === 'boolean' ? 'true or false' : 'a number'}.`
+            break
+          }
+          items.push(item)
+        }
+        if (!errors[f.name] && items.length > 0) args[f.name] = items
         break
       }
       case 'json':

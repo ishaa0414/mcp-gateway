@@ -3,78 +3,21 @@ import { useState, useTransition } from 'react'
 import { Loader2, Play } from 'lucide-react'
 import { runPlayground } from '@/actions/playground'
 import { ResultPanel } from '@/components/playground/result-panel'
+import { SchemaField, fieldKindLabel } from '@/components/schema-field'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { toArguments, type FieldValues, type PlaygroundField } from '@/lib/playground/fields'
+import { toArguments, type FieldValues } from '@/lib/playground/fields'
+import { confirmMessage, requestNote } from '@/lib/playground/notes'
 import type { PlaygroundResult } from '@/lib/playground/result'
 import type { PlaygroundTool } from '@/lib/playground/tools'
 
 const selectClass =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
 
-function FieldControl({
-  field,
-  id,
-  value,
-  error,
-  onChange,
-}: {
-  field: PlaygroundField
-  id: string
-  value: string
-  error: string | undefined
-  onChange: (value: string) => void
-}) {
-  const describedBy = error ? `${id}-error` : undefined
-  const common = { id, 'aria-invalid': error ? true : undefined, 'aria-describedby': describedBy }
-
-  switch (field.kind) {
-    case 'boolean':
-      return (
-        <select {...common} className={selectClass} value={value} onChange={(e) => onChange(e.target.value)}>
-          {!field.required && <option value="">(not set)</option>}
-          {field.required && <option value="">Choose…</option>}
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      )
-    case 'enum':
-      return (
-        <select {...common} className={selectClass} value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">{field.required ? 'Choose…' : '(not set)'}</option>
-          {field.options?.map((option, index) => (
-            <option key={index} value={String(index)}>
-              {String(option)}
-            </option>
-          ))}
-        </select>
-      )
-    case 'json':
-      return (
-        <Textarea
-          {...common}
-          className="font-mono text-xs"
-          rows={4}
-          spellCheck={false}
-          placeholder='JSON, for example {"name": "Rex"} or ["a", "b"]'
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )
-    case 'number':
-    case 'integer':
-      return <Input {...common} type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
-    default:
-      return <Input {...common} type="text" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
-  }
-}
-
-export function PlaygroundPanel({ slug, tools }: { slug: string; tools: PlaygroundTool[] }) {
+export function PlaygroundPanel({ slug, tools, hasCredential }: { slug: string; tools: PlaygroundTool[]; hasCredential: boolean }) {
   const [toolId, setToolId] = useState(tools[0]?.id ?? '')
   const [values, setValues] = useState<Record<string, FieldValues>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -86,6 +29,7 @@ export function PlaygroundPanel({ slug, tools }: { slug: string; tools: Playgrou
   if (!tool) return null
   const current = values[tool.id] ?? {}
   const changesData = tool.method !== 'GET'
+  const facts = { hasCredential, hasHidden: tool.hasHidden }
 
   function run(confirmed: boolean) {
     if (!tool) return
@@ -121,8 +65,7 @@ export function PlaygroundPanel({ slug, tools }: { slug: string; tools: Playgrou
         <CardHeader>
           <CardTitle className="text-base">Run a tool</CardTitle>
           <CardDescription>
-            Calls your real API through the gateway with your stored credential, the way an agent would. These calls are not logged and do not
-            appear in Analytics.
+            Calls your real API through the gateway, the way an agent would. These calls are not logged and do not appear in Analytics.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -167,12 +110,9 @@ export function PlaygroundPanel({ slug, tools }: { slug: string; tools: Playgrou
                           *
                         </span>
                       )}
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {field.kind === 'enum' ? 'one of' : field.kind}
-                        {field.required ? ', required' : ''}
-                      </span>
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">{fieldKindLabel(field)}</span>
                     </Label>
-                    <FieldControl
+                    <SchemaField
                       field={field}
                       id={id}
                       value={current[field.name] ?? ''}
@@ -200,17 +140,18 @@ export function PlaygroundPanel({ slug, tools }: { slug: string; tools: Playgrou
 
       <div aria-live="polite" aria-busy={isPending}>
         {isPending && !result && <p className="text-sm text-muted-foreground">Waiting for the gateway…</p>}
-        {result && <div className={isPending ? 'opacity-50' : undefined}><ResultPanel result={result} /></div>}
+        {result && (
+          <div className={isPending ? 'opacity-50' : undefined}>
+            <ResultPanel result={result} note={requestNote(facts)} />
+          </div>
+        )}
       </div>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Send a real {tool.method} request?</DialogTitle>
-            <DialogDescription>
-              This will send a real {tool.method} to <code className="text-xs">{tool.path}</code> with your stored credential. It can change or delete data in
-              your API.
-            </DialogDescription>
+            <DialogDescription>{confirmMessage(tool.method, tool.path, facts)}</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setConfirming(false)}>

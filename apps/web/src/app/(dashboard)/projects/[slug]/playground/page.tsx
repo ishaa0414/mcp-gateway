@@ -4,6 +4,7 @@ import { getProject } from '@/actions/projects'
 import { PlaygroundPanel } from '@/components/playground/playground-panel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { playgroundTools } from '@/lib/playground/tools'
 
@@ -66,10 +67,13 @@ export default async function PlaygroundPage({ params }: Props) {
     )
   }
 
+  // Only whether a credential exists, to word the notes; its type and value stay on the server.
+  const credential = await db.upstreamCredential.findUnique({ where: { projectId: project.id }, select: { type: true } })
+
   return (
     <div className="space-y-4">
       {heading}
-      <PlaygroundPanel slug={slug} tools={tools} />
+      <PlaygroundPanel slug={slug} tools={tools} hasCredential={credential !== null && credential.type !== 'NONE'} />
     </div>
   )
 }

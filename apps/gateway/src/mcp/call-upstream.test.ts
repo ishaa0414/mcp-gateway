@@ -298,3 +298,56 @@ describe('callUpstream: the response preview', () => {
     expect(outcome.responseBytes).toBe(150_000)
   })
 })
+
+describe('callUpstream: an optional hidden parameter fixed to "never send" (null)', () => {
+  it('is absent from the real upstream request: not "null", not an empty string (query)', async () => {
+    const t = tool('listItems', { tenant: { value: null } })
+    const { request } = await callUpstream(project(), t, { scope: 'all' }, deps, { preview: true })
+    expect(received[0]!.url).toBe('/tenant/items?scope=all')
+    expect(request!.url).toBe(`${baseUrl}/tenant/items?scope=all`) // nothing to hide, so nothing shown
+  })
+
+  it('is absent from the real upstream request body', async () => {
+    const t = tool('createPet', { label: { value: null } })
+    const { request } = await callUpstream(project(), t, { name: 'Rex' }, deps, { preview: true })
+    expect(JSON.parse(received[0]!.body)).toEqual({ name: 'Rex' })
+    expect(JSON.parse(request!.body!)).toEqual({ name: 'Rex' })
+  })
+
+  it('is absent from a header too', async () => {
+    const t = tool('getPet', { 'X-Trace': { value: null } })
+    await callUpstream(project(), t, { petId: 3 }, deps, { preview: true })
+    expect(received[0]!.url).toBe('/pets/3')
+    expect(received[0]!.headers['x-trace']).toBeUndefined()
+  })
+
+  it('does not make the word "null" a secret: a response that contains it is shown as it is', async () => {
+    const t = tool('listItems', { tenant: { value: null } })
+    const { response } = await callUpstream(project(), t, { scope: 'all' }, deps, { preview: true })
+    expect(response!.body).toContain('"auth":null') // the echo upstream says null for the credential it did not get
+    expect(response!.body).not.toContain(REDACTED)
+  })
+})
+
+describe('callUpstream: hidden values that are not text are not redaction secrets either', () => {
+  // false, true and small numbers are ordinary words in a response; masking them would garble every body.
+  it.each([
+    ['false', false],
+    ['true', true],
+    ['a four-digit number', 1234],
+  ])('%s: the response keeps it, the request still shows HIDDEN', async (_label, value) => {
+    const t = tool('listItems', { scope: { value } })
+    const { request, response } = await callUpstream(project(), t, { tenant: 'acme' }, deps, { preview: true })
+    expect(received[0]!.url).toBe(`/tenant/items?tenant=acme&scope=${value}`) // really sent
+    expect(request!.url).toBe(`${baseUrl}/tenant/items?tenant=acme&scope=HIDDEN`)
+    expect(response!.body).toContain(`scope=${value}`) // the echo upstream repeats the query
+    expect(response!.body).not.toContain(REDACTED)
+  })
+
+  it('a string hidden value is still redacted from the response', async () => {
+    const t = tool('listItems', { scope: { value: HIDDEN_LONG } })
+    const { response } = await callUpstream(project(), t, { tenant: 'acme' }, deps, { preview: true })
+    expect(response!.body).toContain(REDACTED)
+    expect(response!.body).not.toContain(HIDDEN_LONG)
+  })
+})

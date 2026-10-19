@@ -29,6 +29,8 @@ let otherId: string
 let slug: string
 let otherSlug: string
 let emptySlug: string
+let credentialSlug: string
+let nullHiddenId: string
 let hiddenOnlySlug: string
 
 const schema = {
@@ -73,6 +75,15 @@ beforeAll(async () => {
 
   emptySlug = (await makeProject(owner.id, 'empty')).slug
 
+  const withCredential = await makeProject(owner.id, 'withcred')
+  credentialSlug = withCredential.slug
+  await addTool(withCredential.id, 'plain')
+  await db.upstreamCredential.create({ data: { projectId: withCredential.id, type: 'BEARER', encryptedValue: 'not-a-real-ciphertext' } })
+
+  const nullHidden = await makeProject(owner.id, 'nullhidden')
+  await addTool(nullHidden.id, 'neverSent', { hiddenParams: { note: { value: null, required: false } } })
+  nullHiddenId = nullHidden.id
+
   const hiddenOnly = await makeProject(owner.id, 'hiddenonly')
   hiddenOnlySlug = hiddenOnly.slug
   await addTool(hiddenOnly.id, 'withHidden', { hiddenParams: { [HIDDEN_NAME]: { value: HIDDEN_VALUE } } })
@@ -103,6 +114,14 @@ describe('playgroundTools', () => {
     for (const secret of [HIDDEN_NAME, HIDDEN_VALUE, HIDDEN_ENUM_VALUE]) expect(payload).not.toContain(secret)
   })
 
+  it('says whether a hidden value is sent: yes for a fixed value, no for none and for "never send" (null)', async () => {
+    const tools = (await playgroundTools({ userId: ownerId, slug }))!
+    expect(tools.find((t) => t.name === 'withHidden')!.hasHidden).toBe(true)
+    expect(tools.find((t) => t.name === 'plain')!.hasHidden).toBe(false)
+    const neverSent = await db.project.findUniqueOrThrow({ where: { id: nullHiddenId }, select: { slug: true } })
+    expect((await playgroundTools({ userId: ownerId, slug: neverSent.slug }))![0]!.hasHidden).toBe(false)
+  })
+
   it('the same tool without a hidden parameter does show it (so the check above means something)', async () => {
     const plain = (await playgroundTools({ userId: ownerId, slug }))!.find((t) => t.name === 'plain')!
     expect(plain.fields.map((f) => f.name)).toEqual(['petId', HIDDEN_NAME, 'note'])
@@ -128,6 +147,14 @@ describe('the page', () => {
     const payload = serialise(await render(hiddenOnlySlug))
     expect(payload).toContain('withHidden') // the tool is there
     for (const secret of [HIDDEN_NAME, HIDDEN_VALUE, HIDDEN_ENUM_VALUE]) expect(payload).not.toContain(secret)
+  })
+
+  it('tells the browser only whether a credential exists, never its type or value', async () => {
+    settings.value = { PLAYGROUND_SECRET: 'x'.repeat(40) }
+    const withCredential = serialise(await render(credentialSlug))
+    expect(withCredential).toContain('"hasCredential":true')
+    expect(withCredential).not.toMatch(/BEARER|not-a-real-ciphertext/)
+    expect(serialise(await render(hiddenOnlySlug))).toContain('"hasCredential":false')
   })
 
   it('is a not-found for a project the user does not own', async () => {
