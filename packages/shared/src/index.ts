@@ -28,3 +28,14 @@ export type { LogEvent, LogErrorClass } from './log-event.js'
 
 export { maskArguments, isSensitiveKey, MASK, DEFAULT_MASK_LIMITS } from './mask.js'
 export type { MaskLimits, MaskResult } from './mask.js'
+
+export {
+  signPlaygroundRequest,
+  verifyPlaygroundRequest,
+  newPlaygroundNonce,
+  PLAYGROUND_HEADERS,
+  PLAYGROUND_WINDOW_MS,
+  PLAYGROUND_NONCE_BYTES,
+  PLAYGROUND_MIN_SECRET_BYTES,
+} from './playground-signature.js'
+export type { PlaygroundRequestParts, PlaygroundVerdict } from './playground-signature.js'
