@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -8,13 +8,25 @@ afterEach(() => {
 // In production the lazy proxy used to build a new PrismaClient on every property
 // access: transactions then failed with "Transaction not found" and each call
 // leaked a connection pool. Dev (which cached on globalThis) hid it.
+async function freshDbFor(nodeEnv: string) {
+  vi.resetModules()
+  vi.stubEnv('NODE_ENV', nodeEnv)
+  globalThis.__prisma = undefined
+  return (await import('@mcp-gateway/db')).db
+}
+
+// The first PrismaClient built in a worker loads and compiles the query compiler. Measured with the CPU
+// starved (12 busy loops on 4 cores): that first build took over 5 s, inside the first test's own 5 s limit,
+// and under no load a fraction of a second. Pay it once here, under the hook's own limit, so each test below
+// measures only what it is about.
+beforeAll(async () => {
+  const db = await freshDbFor('development')
+  await db.$queryRaw`SELECT 1`
+  await db.$disconnect()
+}, 60_000)
+
 describe.each(['production', 'development'])('db client (NODE_ENV=%s)', (nodeEnv) => {
-  async function freshDb() {
-    vi.resetModules()
-    vi.stubEnv('NODE_ENV', nodeEnv)
-    globalThis.__prisma = undefined
-    return (await import('@mcp-gateway/db')).db
-  }
+  const freshDb = () => freshDbFor(nodeEnv)
 
   it('is a single client: repeated access returns the same objects', async () => {
     const db = await freshDb()
@@ -23,7 +35,9 @@ describe.each(['production', 'development'])('db client (NODE_ENV=%s)', (nodeEnv
     await db.$disconnect()
   })
 
-  it('runs an interactive transaction end to end', async () => {
+  // Builds a client, runs a transaction with a commit and a rollback, and checks both: 0.42 s idle, 3.2 s with the CPU
+  // starved.
+  it('runs an interactive transaction end to end', { timeout: 30_000 }, async () => {
     // Not "two counts agree": other test files insert users into this database at the same time,
     // and a read-committed transaction is allowed to see them. This checks what the old bug broke:
     // every statement of the transaction runs on one connection of one client.

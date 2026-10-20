@@ -73,7 +73,9 @@ afterAll(async () => {
 })
 
 describe('first import', () => {
-  it('creates a tool per operation with the spec as its baseline', async () => {
+  // The first import in the worker: it parses a spec with swagger-parser for the first time and writes every tool in
+  // one transaction. 1 s idle, 3.7 s with the CPU starved, so it gets its own limit instead of the 5 s default.
+  it('creates a tool per operation with the spec as its baseline', { timeout: 30_000 }, async () => {
     const p = await newProject()
     const summary = await importSpec(db, { projectId: p.id, specText: makeSpec() })
 
@@ -85,7 +87,8 @@ describe('first import', () => {
 })
 
 describe('re-importing an identical spec', () => {
-  it('reports 0 updated and counts every tool as unchanged', async () => {
+  // Two full imports (parse, diff, transaction) one after the other: 0.64 s idle, over 5 s when the CPU is starved.
+  it('reports 0 updated and counts every tool as unchanged', { timeout: 30_000 }, async () => {
     const p = await newProject()
     await importSpec(db, { projectId: p.id, specText: makeSpec() })
 
@@ -157,7 +160,8 @@ describe('re-importing a changed spec', () => {
     expect(await toolByOp(p.id, 'deletePet')).toMatchObject({ description: 'Remove a pet' })
   })
 
-  it('soft-removes operations that left the spec, keeping their edits, and restores them', async () => {
+  // Three imports of a changing spec plus the reads between them: 0.39 s idle, 3.2 s with the CPU starved.
+  it('soft-removes operations that left the spec, keeping their edits, and restores them', { timeout: 30_000 }, async () => {
     const p = await newProject()
     await importSpec(db, { projectId: p.id, specText: makeSpec() })
     const t = await toolByOp(p.id, 'deletePet')
@@ -211,7 +215,8 @@ describe('upstream base URL on import', () => {
     expect((await db.project.findUniqueOrThrow({ where: { id: p.id } })).upstreamBaseUrl).toBe('')
   })
 
-  it('never stores a relative base URL, whatever the spec says', async () => {
+  // Four imports in a row, each into its own new project: 0.19 s idle, 5.0 s with the CPU starved.
+  it('never stores a relative base URL, whatever the spec says', { timeout: 30_000 }, async () => {
     for (const url of ['/api/v3', 'api/v3', '../v3', '//host/v3']) {
       const p = await newProject()
       await importSpec(db, { projectId: p.id, specText: makeSpec({ servers: [{ url }] }) })
