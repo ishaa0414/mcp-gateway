@@ -181,17 +181,6 @@ export interface UpstreamCall {
 
 export const DISPLAY_BODY_CHARS = 100_000
 
-/**
- * What a hidden value contributes to the redaction list. Text, and the JSON of an object or array, can
- * be a token. null (never sent), true/false and numbers cannot: as text they are ordinary words in a
- * response ("null", "false", "1234"), and masking them would garble every body. (The request preview
- * does not rely on this: it hides them structurally.)
- */
-const hiddenSecret = (value: unknown): string[] => {
-  if (typeof value === 'string') return value === '' ? [] : [value]
-  if (typeof value === 'object' && value !== null) return [JSON.stringify(value)]
-  return []
-}
 /** Shown in place of a credential. */
 const CREDENTIAL_PLACEHOLDER = '••••'
 /** Shown in place of a hidden parameter's value. */
@@ -259,7 +248,8 @@ function previewBody(body: string, contentType: string | undefined): string {
  * The request as the user may see it. Built before the credential is added, from a second build in
  * which every hidden parameter is `HIDDEN`, so no hidden value is ever in the text (a text replace
  * could not catch a short value). The credential is shown as a placeholder by kind. Sensitive header,
- * query and body names are masked like call logs, and `redactSecrets` runs last as a second layer.
+ * query and body names are masked like call logs, and `redactSecrets` runs last with the credential as a
+ * second layer. A hidden value is not a secret and is not in that list: see `callUpstream`.
  */
 function previewRequest(project: ProjectConfig, tool: CachedTool, args: Record<string, unknown>, built: BuiltRequest, secrets: readonly string[]): RequestPreview {
   let shown = built
@@ -369,10 +359,12 @@ export async function callUpstream(
   }
 
   // --- upstream credential ---
+  // The only thing redacted from what comes back is the credential (plain and in its encoded forms), for the MCP
+  // result and the Playground preview alike. A hidden parameter's value is not a secret: it is a fixed setting
+  // stored as plain text, often an ordinary word ("available"), and masking it wherever it appears in a response
+  // corrupts the data an agent or a person is reading. The request preview hides it structurally instead.
   const secrets: string[] = []
-  // What a preview must also never contain: the credential and every hidden value.
-  const previewSecrets: string[] = options.preview ? Object.values(tool.hidden).flatMap(hiddenSecret) : []
-  const request = options.preview ? () => ({ request: previewRequest(project, tool, args, built, previewSecrets) }) : () => ({})
+  const request = options.preview ? () => ({ request: previewRequest(project, tool, args, built, secrets) }) : () => ({})
   let url = built.url
   const headers = { ...built.headers }
   const { credential } = project
@@ -386,7 +378,6 @@ export async function callUpstream(
       return { outcome: fail('The upstream credential could not be loaded. Re-enter it in the project settings.', 'CREDENTIAL'), ...request() }
     }
     secrets.push(secret)
-    previewSecrets.push(secret)
 
     if (credential.type === 'BEARER') headers['authorization'] = `Bearer ${secret}`
     else if (credential.type === 'CUSTOM_HEADER' && credential.headerName) headers[credential.headerName.toLowerCase()] = secret
@@ -405,7 +396,7 @@ export async function callUpstream(
     return {
       outcome: formatResponse(response, secrets),
       ...request(),
-      ...(options.preview ? { response: previewResponse(response, previewSecrets) } : {}),
+      ...(options.preview ? { response: previewResponse(response, secrets) } : {}),
     }
   } catch (err) {
     if (err instanceof SsrfError) {

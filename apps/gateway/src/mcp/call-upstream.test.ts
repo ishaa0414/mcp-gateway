@@ -275,14 +275,15 @@ describe('callUpstream: the response preview', () => {
     expect(Object.keys(response!.headers)).not.toContain('x-internal-host')
   })
 
-  it('redacts a credential and hidden values the upstream echoes back', async () => {
+  it('redacts the credential an upstream echoes back in an error, and leaves everything else as the upstream sent it', async () => {
     const t = tool('getPet', { 'X-Trace': { value: HIDDEN_LONG } })
     const result = await callUpstream(project({ type: 'BEARER', value: BEARER }), t, { petId: 500 }, deps, { preview: true })
     expect(result.outcome.errorClass).toBe('UPSTREAM_5XX')
     expect(result.response!.status).toBe(500)
     expect(result.response!.body).toContain(REDACTED)
     expect(result.response!.body).not.toContain(BEARER)
-    expect(result.response!.body).not.toContain(HIDDEN_LONG)
+    // The upstream's own words are not touched, even when they equal a hidden value (that is not a secret).
+    expect(result.response!.body).toContain(HIDDEN_LONG)
   })
 
   it('shows only the type and size of a binary body', async () => {
@@ -329,7 +330,7 @@ describe('callUpstream: an optional hidden parameter fixed to "never send" (null
   })
 })
 
-describe('callUpstream: hidden values that are not text are not redaction secrets either', () => {
+describe('callUpstream: a hidden value of any type is left alone in the response', () => {
   // false, true and small numbers are ordinary words in a response; masking them would garble every body.
   it.each([
     ['false', false],
@@ -344,10 +345,62 @@ describe('callUpstream: hidden values that are not text are not redaction secret
     expect(response!.body).not.toContain(REDACTED)
   })
 
-  it('a string hidden value is still redacted from the response', async () => {
+  // Replaces "a string hidden value is still redacted from the response": hidden values used to be added to the
+  // redaction list, which masked ordinary words in every response. They are fixed settings stored as plain text,
+  // not secrets (secrets belong in the encrypted project credential), so only the credential is redacted.
+  it('even a long, token-looking hidden string is not redacted from the response (put secrets in the credential)', async () => {
     const t = tool('listItems', { scope: { value: HIDDEN_LONG } })
-    const { response } = await callUpstream(project(), t, { tenant: 'acme' }, deps, { preview: true })
-    expect(response!.body).toContain(REDACTED)
-    expect(response!.body).not.toContain(HIDDEN_LONG)
+    const { response, outcome } = await callUpstream(project(), t, { tenant: 'acme' }, deps, { preview: true })
+    expect(response!.body).toContain(`scope=${HIDDEN_LONG}`)
+    expect(response!.body).not.toContain(REDACTED)
+    expect((outcome.result.content[0] as { text: string }).text).toContain(`scope=${HIDDEN_LONG}`)
+  })
+})
+
+describe('a hidden parameter value is not a secret', () => {
+  // The upstream echoes the query, so "scope=available" is in its response. The value is an ordinary word here:
+  // masking it corrupts the data (every "available" in a pet list would become [REDACTED]).
+  const hiddenWord = () => tool('listItems', { scope: { value: 'available' } })
+  const args = { tenant: 'acme' }
+
+  it('MCP: the tool result an agent receives keeps it', async () => {
+    const viaExecute = await executeTool(project(), hiddenWord(), args, deps)
+    const viaCall = (await callUpstream(project(), hiddenWord(), args, deps)).outcome
+    for (const outcome of [viaExecute, viaCall]) {
+      const text = (outcome.result.content[0] as { text: string }).text
+      expect(text).toContain('scope=available')
+      expect(text).not.toContain(REDACTED)
+    }
+  })
+
+  it('Playground: the response preview keeps it', async () => {
+    const { response } = await callUpstream(project(), hiddenWord(), args, deps, { preview: true })
+    expect(response!.body).toContain('scope=available')
+    expect(response!.body).not.toContain(REDACTED)
+  })
+
+  it('Playground: the request preview still shows HIDDEN in its place, and nothing else about it is rewritten', async () => {
+    const { request } = await callUpstream(project(), hiddenWord(), args, deps, { preview: true })
+    expect(request!.url).toBe(`${baseUrl}/tenant/items?tenant=acme&scope=HIDDEN`)
+    expect(received[0]!.url).toBe('/tenant/items?tenant=acme&scope=available') // the real call carried it
+  })
+
+  it('a header value that happens to equal the hidden word is not masked in the request preview', async () => {
+    const t = tool('getPet', { verbose: { value: 'available' } })
+    const { request } = await callUpstream(project(), t, { petId: 1, 'X-Trace': 'available' }, deps, { preview: true })
+    expect(request!.headers['x-trace']).toBe('available')
+  })
+
+  it('the credential is still redacted from the response, in both paths, in plain and encoded form', async () => {
+    const p = project({ type: 'QUERY_PARAM', queryParamName: 'api_key', value: QUERY_SECRET })
+    const t = tool('listItems', { scope: { value: 'available' } })
+    const viaCall = await callUpstream(p, t, args, deps, { preview: true })
+    const text = (viaCall.outcome.result.content[0] as { text: string }).text
+    for (const shown of [text, viaCall.response!.body!]) {
+      expect(shown).toContain(REDACTED)
+      expect(shown).not.toContain(QUERY_SECRET)
+      expect(shown).not.toContain(encodeURIComponent(QUERY_SECRET))
+      expect(shown).toContain('scope=available')
+    }
   })
 })

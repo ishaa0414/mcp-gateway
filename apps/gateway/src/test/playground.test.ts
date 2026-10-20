@@ -126,19 +126,22 @@ describe('a valid signed request', () => {
     expect(upstream.requests).toHaveLength(0)
   })
 
-  it('never puts the credential or a hidden value anywhere in the response body', async () => {
+  it('never puts the credential anywhere in the response body, and shows hidden values as HIDDEN in the request', async () => {
     const posted = await run('createPet', { arguments: { name: 'Rex' }, confirmed: true })
     const listed = await run('listTenantItems', { arguments: { q: 'x' } })
     for (const res of [posted, listed]) {
       expect(res.status).toBe(200)
-      for (const secret of [BEARER, HIDDEN_TAG, HIDDEN_TENANT]) expect(res.text).not.toContain(secret)
+      expect(res.text).not.toContain(BEARER) // the credential is the one thing redacted, on the request and the response
+      expect(JSON.stringify(res.json['request'])).not.toMatch(new RegExp(`${HIDDEN_TAG}|${HIDDEN_TENANT}`)) // the request side
     }
     // Both calls really used them.
     expect(upstream.requests[0]!.body).toContain(HIDDEN_TAG)
     expect(upstream.requests[1]!.url).toContain(HIDDEN_TENANT)
-    // And the preview shows the placeholder instead.
+    // The request shows the placeholder instead.
     expect(JSON.parse(posted.json['request'].body)).toEqual({ name: 'Rex', tag: 'HIDDEN' })
     expect(listed.json['request'].url).toContain('tenant=HIDDEN')
+    // A hidden value is a plain setting, not a secret: when the upstream echoes it, the response shows it as sent.
+    expect(JSON.parse(posted.json['response'].body).body).toContain(HIDDEN_TAG)
   })
 
   it('writes no call-log row and queues no event', async () => {
