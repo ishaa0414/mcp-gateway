@@ -109,10 +109,10 @@ The **Playground** tab runs one of a project's enabled tools against your real A
 
 The dashboard does not use an API key for this. Its server signs the request (HMAC-SHA256, 60 s window, one-time nonce) with `PLAYGROUND_SECRET` and sends it to an internal gateway route, which is only registered when the secret is set. Playground calls are limited per project (30 a minute by default) and are not written to the call log, so they do not show in Analytics. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the path end to end.
 
-Set the secret once in the root `.env`, with the same value for the dashboard and the gateway. This appends a random one without printing it (run it once; a second run would add a second line):
+Set the secret once in the root `.env`, with the same value for the dashboard and the gateway. This appends a random one without printing it, and does nothing if the file already has a `PLAYGROUND_SECRET=` line:
 
 ```bash
-node -e "require('fs').appendFileSync('.env','\nPLAYGROUND_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n')"
+node -e "const f=require('fs');const t=f.existsSync('.env')?f.readFileSync('.env','utf8'):'';if(/^PLAYGROUND_SECRET=/m.test(t)){console.log('PLAYGROUND_SECRET is already set; left as it is')}else{f.appendFileSync('.env','\nPLAYGROUND_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n');console.log('PLAYGROUND_SECRET added')}"
 ```
 
 Never paste the secret into a chat or a ticket. Without it the tab shows "Playground not configured".
@@ -139,11 +139,12 @@ The variables below are the ones you will most likely touch. `.env.example` list
 
 ### How fresh is what the gateway serves?
 
-The gateway caches in Redis so a call does not hit Postgres every time. The dashboard clears the right entries when you change something:
+The gateway caches in Redis so a call does not hit Postgres every time. The dashboard clears the right entries when you change something, so changes and revocations take effect immediately:
 
-- Revoking an API key takes effect within about 30 seconds at most (`API_KEY_CACHE_TTL_SECONDS`, default 30; a key that was not found is remembered for 10 s).
+- Revoking an API key clears that key's cached lookup at once.
 - Toggling or editing a tool (including hidden parameters), re-importing the spec, changing credentials, editing project settings and deleting a project all clear the project's cached config at once.
-- If Redis is unreachable at that moment, the clear is skipped and the dashboard stops trying for 30 s. The gateway then serves the old config until `CONFIG_CACHE_TTL_SECONDS` runs out (default 300, so up to about 5 minutes).
+
+Only if Redis is unreachable at that moment is the clear skipped (the dashboard then stops trying for 30 s). Until the cache entries expire on their own, a revoked key can keep working for up to `API_KEY_CACHE_TTL_SECONDS` (default 30 s), and a config change can take up to `CONFIG_CACHE_TTL_SECONDS` (default 300 s, so about 5 minutes) to reach the gateway.
 
 The Playground reads the same cached config as agents do.
 
