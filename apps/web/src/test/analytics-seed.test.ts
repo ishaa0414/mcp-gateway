@@ -3,7 +3,8 @@
  * project, is repeatable, and produces rows that pass the same validation as real ones.
  */
 import { describe, it, expect, afterAll } from 'vitest'
-import { db, seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError } from '@mcp-gateway/db'
+import { db } from '@mcp-gateway/db'
+import { seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError } from '@mcp-gateway/db/seed'
 import { logEventSchema } from '@mcp-gateway/shared/log-event'
 
 const LOCAL = { NODE_ENV: 'development', DATABASE_URL: 'postgresql://u:p@localhost:5432/mcpgateway_test' }
@@ -52,7 +53,9 @@ describe('assertSeedAllowed', () => {
 })
 
 describe('seedAnalyticsLogs', () => {
-  it('writes nothing and touches nothing in production', async () => {
+  // Creates a user and project, seeds it, counts its rows, then counts again after a refused seed: many sequential
+  // database round trips. 0.44 s idle, 5.1 s with the CPU starved, so it gets its own limit instead of the 5 s default.
+  it('writes nothing and touches nothing in production', { timeout: 30_000 }, async () => {
     const project = await makeProject('prod')
     await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 5, now: NOW }, LOCAL)
     const before = await db.toolCallLog.count({ where: { projectId: project.id } })
@@ -72,7 +75,8 @@ describe('seedAnalyticsLogs', () => {
     expect(await db.toolCallLog.count({ where: { projectId: project.id } })).toBe(0)
   })
 
-  it('inserts rows with project-scoped ids and past timestamps, and a re-run replaces them', async () => {
+  // Two seeds, a count and a read: 0.25 s idle, 5.0 s with the CPU starved.
+  it('inserts rows with project-scoped ids and past timestamps, and a re-run replaces them', { timeout: 30_000 }, async () => {
     const project = await makeProject('rerun')
     const first = await seedAnalyticsLogs(db, { projectSlug: project.slug, rows: 30, now: NOW }, LOCAL)
     expect(first).toMatchObject({ projectId: project.id, deleted: 0, written: 30 })
@@ -90,7 +94,8 @@ describe('seedAnalyticsLogs', () => {
     expect(await db.toolCallLog.count({ where: { projectId: project.id } })).toBe(30)
   })
 
-  it("never deletes a real row or another project's seed rows", async () => {
+  // Three seeds across two projects and three counts: 0.16 s idle, 2.6 s with the CPU starved.
+  it("never deletes a real row or another project's seed rows", { timeout: 30_000 }, async () => {
     const [a, b] = [await makeProject('scope-a'), await makeProject('scope-b')]
     await seedAnalyticsLogs(db, { projectSlug: b.slug, rows: 10, now: NOW }, LOCAL)
     await seedAnalyticsLogs(db, { projectSlug: a.slug, rows: 5, now: NOW }, LOCAL)
@@ -184,7 +189,9 @@ describe('seeded tool inputs', () => {
     expect(logins.every((e) => e.input['password'] === '[MASKED]')).toBe(true)
   })
 
-  it("stores a project tool's inputs in the database through the same path as real rows", async () => {
+  // Real work, not a cold start: it generates, masks, validates and inserts 200 rows. 0.46 s idle, but 2.4 s with
+  // the CPU starved and 5.1 s inside a full parallel run, so it gets its own limit instead of the 5 s default.
+  it("stores a project tool's inputs in the database through the same path as real rows", { timeout: 30_000 }, async () => {
     const project = await makeProject('inputs')
     await db.tool.create({
       data: {

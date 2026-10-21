@@ -1,4 +1,4 @@
-import { DEFAULT_LOG_RETENTION_DAYS, z } from '@mcp-gateway/shared'
+import { DEFAULT_LOG_RETENTION_DAYS, DEFAULT_TOOL_CALL_TIMEOUT_MS, PLAYGROUND_MIN_SECRET_BYTES, z } from '@mcp-gateway/shared'
 
 const port = z.coerce.number().int().min(1).max(65535)
 
@@ -22,10 +22,21 @@ export const gatewayEnvSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
-    TOOL_CALL_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
+    TOOL_CALL_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     TOOL_RESPONSE_MAX_BYTES: z.coerce.number().int().min(1024).max(10 * 1024 * 1024).default(1024 * 1024),
     CONFIG_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
     API_KEY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),
+    // Shared with the dashboard; signs its playground requests. Unset (or empty): the playground route does not exist.
+    // Generate with: openssl rand -hex 32
+    PLAYGROUND_SECRET: z
+      .string()
+      .optional()
+      .transform((v) => (v === '' ? undefined : v))
+      .refine((v) => v === undefined || Buffer.byteLength(v) >= PLAYGROUND_MIN_SECRET_BYTES, {
+        message: `must be at least ${PLAYGROUND_MIN_SECRET_BYTES} bytes (openssl rand -hex 32)`,
+      }),
+    // Playground calls per project per minute.
+    PLAYGROUND_RATE_PER_MIN: z.coerce.number().int().min(1).max(1_000).default(30),
     // Call logging. `queue`: batches go to BullMQ and the worker writes them to Postgres.
     // `direct`: the gateway writes batches to Postgres itself and needs no worker (for hosts where BullMQ's
     // Redis polling is too expensive, such as a free Upstash plan). Deploy with `direct`.

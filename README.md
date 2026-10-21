@@ -2,7 +2,7 @@
 
 Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server that AI agents can connect to — in 10 minutes.
 
-> **Status:** Phase 4 in review — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging and an analytics dashboard.
+> **Status:** Phases 0–4 and Phase 5a done; Phase 5b (deployment and demo) next — import an OpenAPI spec, curate tools, try them in a playground, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging, an analytics dashboard and copy-paste connection guides.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ pnpm dev
 
 | App | URL | Description |
 |---|---|---|
-| `apps/web` | http://localhost:3000 | Next.js dashboard |
+| `apps/web` | http://localhost:3000 | Next.js dashboard (the dev server listens on 127.0.0.1 only) |
 | `apps/gateway` | http://localhost:4000 | Fastify MCP gateway |
 | `apps/worker` | — | BullMQ log consumer (writes call logs, deletes old ones) |
 
@@ -73,7 +73,7 @@ curl http://localhost:4000/health
 
 ## Try it: from an OpenAPI spec to MCP Inspector
 
-1. Start everything (`docker compose up -d`, then `pnpm dev`) and sign up at http://localhost:3000.
+1. Start everything (`docker compose up -d`, then `pnpm dev`) and sign up at http://localhost:3000. Open it as `localhost`, not `127.0.0.1`: sign-in is tied to the `AUTH_URL` address. The dev server and the gateway listen on this machine only; to reach the dashboard from a phone on your network, run `pnpm --filter @mcp-gateway/web exec next dev --hostname 0.0.0.0` and set `AUTH_URL` to that address.
 2. **New project**, then on the **Spec** tab import a spec by URL, for example `https://petstore3.swagger.io/api/v3/openapi.json`. The upstream base URL is filled in from the spec.
 3. On **Tools**, switch off the operations you do not want agents to see. Rename them or hide parameters if you like.
 4. If your API needs authentication, set it under **Settings → Upstream authentication**. The secret is stored encrypted and never shown again.
@@ -102,6 +102,51 @@ To fill a project with demo data (local development database only; the script re
 ```bash
 pnpm db:seed:analytics --project <slug>   # add --rows N for more; re-running replaces the previous seed rows
 ```
+
+## Playground
+
+The **Playground** tab runs one of a project's enabled tools against your real API and shows the request and the response. Pick a tool, fill in its parameters and click **Run**. Tools that change data (anything but GET) ask for a confirmation first. Credentials are shown as `••••`; parameters you hid from agents are never sent.
+
+The dashboard does not use an API key for this. Its server signs the request (HMAC-SHA256, 60 s window, one-time nonce) with `PLAYGROUND_SECRET` and sends it to an internal gateway route, which is only registered when the secret is set. Playground calls are limited per project (30 a minute by default) and are not written to the call log, so they do not show in Analytics. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the path end to end.
+
+Set the secret once in the root `.env`, with the same value for the dashboard and the gateway. This appends a random one without printing it, and does nothing if the file already has a `PLAYGROUND_SECRET=` line:
+
+```bash
+node -e "const f=require('fs');const t=f.existsSync('.env')?f.readFileSync('.env','utf8'):'';if(/^PLAYGROUND_SECRET=/m.test(t)){console.log('PLAYGROUND_SECRET is already set; left as it is')}else{f.appendFileSync('.env','\nPLAYGROUND_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n');console.log('PLAYGROUND_SECRET added')}"
+```
+
+Never paste the secret into a chat or a ticket. Without it the tab shows "Playground not configured".
+
+## Connect
+
+The **Connect** tab gives copy-paste setup for MCP Inspector, Claude Code, Cursor and VS Code. Each snippet reads your API key from a per-project environment variable (`<SLUG>_MCP_KEY`, for example `PETSTORE_DEMO_MCP_KEY`), so the key itself is never in the snippet. The tab also shows how to set that variable without echoing the key.
+
+## Configuration
+
+The variables below are the ones you will most likely touch. `.env.example` lists every variable with its default and a comment.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `PLAYGROUND_SECRET` | unset | Shared by the dashboard and the gateway (at least 32 bytes). Unset: no playground route, and the tab says it is not configured. |
+| `PLAYGROUND_RATE_PER_MIN` | `30` | Playground calls per project per minute (1–1000). |
+| `GATEWAY_INTERNAL_URL` | `GATEWAY_PUBLIC_URL` | Where the dashboard's server reaches the gateway for playground calls. |
+| `TOOL_CALL_TIMEOUT_MS` | `15000` | How long the gateway waits for your API. The playground waits this plus 5 s. Keep it equal on both sides. |
+| `GATEWAY_PUBLIC_URL` | `http://localhost:4000` | The address agents use; shown in the MCP URL and the Connect snippets. |
+
+### Opening the dashboard
+
+`pnpm dev` binds the dashboard to `127.0.0.1` only, so open it as `http://localhost:3000` (`AUTH_URL` is set to that). To reach it from a phone on your network, use the `--hostname 0.0.0.0` override and `AUTH_URL` change described in step 1 of [Try it](#try-it-from-an-openapi-spec-to-mcp-inspector).
+
+### How fresh is what the gateway serves?
+
+The gateway caches in Redis so a call does not hit Postgres every time. The dashboard clears the right entries when you change something, so changes and revocations take effect immediately:
+
+- Revoking an API key clears that key's cached lookup at once.
+- Toggling or editing a tool (including hidden parameters), re-importing the spec, changing credentials, editing project settings and deleting a project all clear the project's cached config at once.
+
+Only if Redis is unreachable at that moment is the clear skipped (the dashboard then stops trying for 30 s). Until the cache entries expire on their own, a revoked key can keep working for up to `API_KEY_CACHE_TTL_SECONDS` (default 30 s), and a config change can take up to `CONFIG_CACHE_TTL_SECONDS` (default 300 s, so about 5 minutes) to reach the gateway.
+
+The Playground reads the same cached config as agents do.
 
 ## Run the gateway in Docker
 

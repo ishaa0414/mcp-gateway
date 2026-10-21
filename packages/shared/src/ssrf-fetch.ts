@@ -1,9 +1,9 @@
 import { request as undiciRequest, Client } from 'undici'
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIPv4 } from 'node:net'
+import { DEFAULT_TOOL_CALL_TIMEOUT_MS as DEFAULT_TIMEOUT_MS } from './timeouts.js'
 
 const MAX_REDIRECTS = 3
-const DEFAULT_TIMEOUT_MS = 15_000
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 
 export type SsrfErrorCode = 'BLOCKED' | 'INVALID_REQUEST' | 'TIMEOUT' | 'TOO_LARGE' | 'REDIRECT'

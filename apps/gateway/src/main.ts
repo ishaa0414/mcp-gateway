@@ -49,6 +49,8 @@ const app = await buildApp({
     lastUsedIntervalMs: 5 * 60 * 1000,
     rateLimitWindowMs: 60_000,
     rateLimitBreakerMs: 5_000,
+    playgroundSecret: env.PLAYGROUND_SECRET,
+    playgroundRatePerMin: env.PLAYGROUND_RATE_PER_MIN,
   },
 })
 

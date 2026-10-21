@@ -9,6 +9,7 @@ import { CallLogger, type LogSink } from './logging/index.js'
 import { ValidatorCache } from './mcp/call-tool.js'
 import { RateLimiter } from './ratelimit/limiter.js'
 import { registerMcpRoutes, rpcError } from './routes/mcp.js'
+import { registerPlaygroundRoutes } from './routes/playground.js'
 
 export interface AppDeps {
   db: PrismaClient
@@ -68,6 +69,8 @@ export async function buildApp({ db, redis, config, logSink, logger }: AppDeps):
   })
 
   registerMcpRoutes(app, { db, cache, config, log, validators, lastUsed, rateLimiter, callLog })
+  // The dashboard's playground. Without a secret there is nothing to verify requests with, so no route.
+  if (config.playgroundSecret) registerPlaygroundRoutes(app, { db, redis, cache, config, log, validators, rateLimiter }, config.playgroundSecret)
 
   app.get('/health', async (_req, reply) => {
     const status: Record<string, string> = {}

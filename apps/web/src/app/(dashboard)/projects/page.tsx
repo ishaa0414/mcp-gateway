@@ -8,8 +8,8 @@ export default async function ProjectsPage() {
   const projects = await getProjects()
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 md:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Projects</h1>
           <p className="text-sm text-muted-foreground">Manage your MCP server projects</p>
@@ -33,15 +33,16 @@ export default async function ProjectsPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (
             <Card key={p.id} className="transition-shadow hover:shadow-md">
               <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-base">{p.name}</CardTitle>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="min-w-0 break-words text-base">{p.name}</CardTitle>
                   <Link
                     href={`/projects/${p.slug}/overview`}
-                    className="text-muted-foreground hover:text-foreground"
+                    aria-label={`Open ${p.name}`}
+                    className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Link>

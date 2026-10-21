@@ -24,7 +24,7 @@ export default async function OverviewPage({ params }: Props) {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Enabled tools</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{enabledTools.length}</p></CardContent>
@@ -44,7 +44,7 @@ export default async function OverviewPage({ params }: Props) {
         <CardContent className="space-y-3">
           <div>
             <p className="text-xs font-medium text-muted-foreground">Upstream base URL</p>
-            <code className="mt-1 block rounded bg-muted px-2 py-1 text-sm">
+            <code className="mt-1 block break-all rounded bg-muted px-2 py-1 text-sm">
               {project.upstreamBaseUrl || <span className="text-muted-foreground">Not set</span>}
             </code>
           </div>

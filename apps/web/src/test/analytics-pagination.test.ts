@@ -58,7 +58,9 @@ describe('recent calls pagination', () => {
     expect(pages).toBe(Math.ceil(expectedOrder.length / 7))
   })
 
-  it('does not split or repeat rows that share one millisecond, whatever the page size', async () => {
+  // Real work: 41 rows walked at five page sizes is about 80 sequential page queries (each also resolves the owned
+  // project). 0.64 s idle, 5.2 s with the CPU starved, so it gets its own limit instead of the 5 s default.
+  it('does not split or repeat rows that share one millisecond, whatever the page size', { timeout: 30_000 }, async () => {
     for (const limit of [1, 2, 4, 9, 10]) {
       expect((await walk(limit)).ids).toEqual(expectedOrder)
     }

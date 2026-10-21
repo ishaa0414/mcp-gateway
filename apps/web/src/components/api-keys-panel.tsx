@@ -72,10 +72,29 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
 
   const active = keys.filter((k) => !k.revokedAt)
   const revoked = keys.filter((k) => k.revokedAt)
+  const rows = [...active, ...revoked]
+
+  // The same control in the table (md and up) and in the cards (below md).
+  const action = (k: ApiKeySummary) =>
+    k.revokedAt ? (
+      <Badge variant="secondary">Revoked</Badge>
+    ) : (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-destructive hover:text-destructive"
+        onClick={() => {
+          setRevokeError(null)
+          setRevoking(k)
+        }}
+      >
+        Revoke<span className="sr-only"> {k.name}</span>
+      </Button>
+    )
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-lg font-semibold">API keys</h2>
           <p className="text-sm text-muted-foreground">
@@ -101,7 +120,8 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <table className="w-full text-sm">
+            {/* From md: a table. Below md: one card per key, so nothing scrolls sideways. */}
+            <table className="hidden w-full text-sm md:table">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Name</th>
@@ -112,7 +132,7 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {[...active, ...revoked].map((k) => (
+                {rows.map((k) => (
                   <tr key={k.id} className={k.revokedAt ? 'text-muted-foreground' : undefined}>
                     <td className="px-4 py-3">
                       <div className="font-medium">{k.name}</div>
@@ -121,27 +141,33 @@ export function ApiKeysPanel({ slug, keys }: ApiKeysPanelProps) {
                     <td className="px-4 py-3 font-mono text-xs">{k.prefix}</td>
                     <td className="px-4 py-3 text-xs">{when(k.createdAt)}</td>
                     <td className="px-4 py-3 text-xs">{k.lastUsedAt ? when(k.lastUsedAt) : 'Never'}</td>
-                    <td className="px-4 py-3 text-right">
-                      {k.revokedAt ? (
-                        <Badge variant="secondary">Revoked</Badge>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => {
-                            setRevokeError(null)
-                            setRevoking(k)
-                          }}
-                        >
-                          Revoke
-                        </Button>
-                      )}
-                    </td>
+                    <td className="px-4 py-3 text-right">{action(k)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            <ul className="divide-y md:hidden">
+              {rows.map((k) => (
+                <li key={k.id} className={`space-y-2 p-4 ${k.revokedAt ? 'text-muted-foreground' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{k.name}</p>
+                      <p className="text-xs text-muted-foreground">{k.rateLimitPerMin} tool calls/min</p>
+                    </div>
+                    <div className="shrink-0">{action(k)}</div>
+                  </div>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                    <dt className="text-muted-foreground">Key</dt>
+                    <dd className="break-all font-mono">{k.prefix}</dd>
+                    <dt className="text-muted-foreground">Created</dt>
+                    <dd>{when(k.createdAt)}</dd>
+                    <dt className="text-muted-foreground">Last used</dt>
+                    <dd>{k.lastUsedAt ? when(k.lastUsedAt) : 'Never'}</dd>
+                  </dl>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

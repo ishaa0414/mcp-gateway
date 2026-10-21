@@ -1,4 +1,4 @@
-import { validateEnv, z } from '@mcp-gateway/shared'
+import { DEFAULT_TOOL_CALL_TIMEOUT_MS, PLAYGROUND_MIN_SECRET_BYTES, validateEnv, z } from '@mcp-gateway/shared'
 
 // Auth.js v5 reads AUTH_SECRET / AUTH_URL / AUTH_GITHUB_*. The v4 names
 // (NEXTAUTH_SECRET, GITHUB_CLIENT_ID, ...) are not recognised and fail at
@@ -12,8 +12,20 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
 
-  // Where agents reach the gateway, shown in the connection instructions. Not used for any request.
+  // Where agents reach the gateway, shown in the connection instructions.
   GATEWAY_PUBLIC_URL: z.url('must be an absolute URL, e.g. http://localhost:4000').default('http://localhost:4000'),
+  // Where the dashboard's server reaches the gateway for playground calls. Defaults to GATEWAY_PUBLIC_URL (see gatewayInternalUrl).
+  GATEWAY_INTERNAL_URL: z.url({ protocol: /^https?$/, error: 'must be an absolute http(s) URL, e.g. http://localhost:4000' }).optional(),
+  // Shared with the gateway; signs playground requests. Unset (or empty): the Playground shows "not configured".
+  PLAYGROUND_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .refine((v) => v === undefined || Buffer.byteLength(v) >= PLAYGROUND_MIN_SECRET_BYTES, {
+      message: `must be at least ${PLAYGROUND_MIN_SECRET_BYTES} bytes (openssl rand -hex 32)`,
+    }),
+  // The gateway's upstream timeout; the playground waits this long plus a margin. Keep it equal to the gateway's setting.
+  TOOL_CALL_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
 
   ENCRYPTION_KEY: z
     .string()
@@ -23,6 +35,10 @@ const schema = z.object({
 })
 
 export type WebEnv = z.infer<typeof schema>
+
+/** The URL the dashboard's server calls the gateway on: GATEWAY_INTERNAL_URL, or else the public one. */
+export const gatewayInternalUrl = (e: Pick<WebEnv, 'GATEWAY_INTERNAL_URL' | 'GATEWAY_PUBLIC_URL'>): string =>
+  (e.GATEWAY_INTERNAL_URL ?? e.GATEWAY_PUBLIC_URL).replace(/\/+$/, '')
 
 export function parseWebEnv(source: Record<string, string | undefined>): WebEnv {
   return validateEnv({

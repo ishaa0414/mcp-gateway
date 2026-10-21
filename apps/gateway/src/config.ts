@@ -18,6 +18,10 @@ export interface AppConfig {
   rateLimitBreakerMs: number
   /** Clock for the rate limiter. Tests only: lets them move time without sleeping. */
   rateLimitNow?: () => number
+  /** Signs the dashboard's playground requests (at least 32 bytes). Unset: the playground route is not registered. */
+  playgroundSecret?: string | undefined
+  /** Playground calls allowed per project per minute. Default 30. */
+  playgroundRatePerMin?: number | undefined
 }
 
 /** The slice of a pino/Fastify logger the gateway uses. */

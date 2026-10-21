@@ -37,6 +37,13 @@ beforeAll(async () => {
   ])
 })
 
+// First use of the summary query in a worker costs 0.84 s idle; the same call takes 23 to 44 ms in the tests after it
+// (measured), and it scales badly when the CPU is starved. Run it once under the hook's own limit, so the first
+// test measures only its own logic.
+beforeAll(async () => {
+  await getSummary(empty.scope, opts())
+}, 60_000)
+
 afterAll(async () => {
   await deleteOwners(...owners)
   await db.$disconnect()

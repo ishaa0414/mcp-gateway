@@ -32,6 +32,13 @@ let projectId: string
 let toolId: string
 
 beforeAll(async () => {
+  // The dashboard's own Redis client gives up after 1 s (right in production, where Redis is only a cache). With the
+  // CPU starved a healthy Redis can answer slower than that: the invalidator then fails open and pauses for 30 s, and
+  // every check below sees a key that was never deleted (seven failures in one loaded run). This file tests which keys
+  // are cleared, so the dashboard's client gets no command timeout here, as the gateway tests' client has none. How the
+  // dashboard behaves when Redis is slow or down is tested in redis-unavailable.test.ts.
+  ;(globalThis as { __webRedis?: Redis }).__webRedis = new Redis(process.env['REDIS_URL']!, { lazyConnect: true, maxRetriesPerRequest: 1 })
+
   const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   const user = await db.user.create({ data: { email: `inval-${tag}@test.local`, name: 'inval' } })
   users.push(user.id)
@@ -59,6 +66,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.user.deleteMany({ where: { id: { in: users } } })
   redis.disconnect()
+  ;(globalThis as { __webRedis?: Redis }).__webRedis?.disconnect()
 })
 
 /** Pretend the gateway has cached this project. */

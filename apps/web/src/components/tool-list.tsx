@@ -19,18 +19,23 @@ import { Pencil } from 'lucide-react'
 import { toolNameTakenMessage, validateToolName } from '@mcp-gateway/openapi-tools/tool-name'
 import { toAgentSchema } from '@mcp-gateway/openapi-tools/agent-schema'
 import type { Tool } from '@mcp-gateway/db'
+import { ToolParameters } from '@/components/tool-parameters'
+import { draftToHiddenParams, initialDraft, paramFields, type HiddenDraft } from '@/lib/tool-editor/hidden-params'
 
 interface ToolListProps {
   tools: Tool[]
   projectSlug: string
 }
 
-export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
+export function ToolList({ tools, projectSlug }: ToolListProps) {
   const [editingTool, setEditingTool] = useState<Tool | null>(null)
   const [isPending, startTransition] = useTransition()
   const [editError, setEditError] = useState<{ message: string; field?: 'name' } | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [tab, setTab] = useState('basic')
+  const [draft, setDraft] = useState<HiddenDraft>({})
+  const [paramErrors, setParamErrors] = useState<Record<string, string>>({})
   const nameCheck = validateToolName(editName)
   // Removed tools count too: they keep their name in the database.
   const nameTaken =
@@ -48,6 +53,9 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
     setEditName(tool.name)
     setEditDescription(tool.description)
     setEditError(null)
+    setTab('basic')
+    setDraft(initialDraft(tool.inputSchema, tool.hiddenParams))
+    setParamErrors({})
   }
 
   function handleToggle(tool: Tool, enabled: boolean) {
@@ -58,18 +66,36 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
 
   function handleSave() {
     if (!editingTool) return
+    // The same rules the server applies, so a mistake is shown on its row before anything is sent.
+    const hidden = draftToHiddenParams(editingTool.inputSchema, draft)
+    if (!hidden.ok) {
+      setParamErrors(hidden.errors)
+      setTab('params')
+      return
+    }
+    setParamErrors({})
     startTransition(async () => {
       const res = await updateTool(editingTool.id, {
         name: editName,
         description: editDescription,
+        hiddenParams: hidden.hiddenParams,
       })
-      if (res.error) {
+      if (res.param && res.error) {
+        setParamErrors({ [res.param]: res.error })
+        setTab('params')
+      } else if (res.error) {
         setEditError({ message: res.error, field: res.field })
+        if (res.field === 'name') setTab('basic')
       } else {
         setEditingTool(null)
       }
     })
   }
+
+  // What agents will see once saved: the draft's hidden parameters removed.
+  const draftHiddenNames = Object.entries(draft)
+    .filter(([, row]) => row.hidden)
+    .map(([name]) => name)
 
   const active = tools.filter((t) => !t.removedAt)
   const removed = tools.filter((t) => t.removedAt)
@@ -115,18 +141,17 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
               </DialogDescription>
             </DialogHeader>
 
-            <Tabs defaultValue="basic">
-              <TabsList>
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList className="max-w-full justify-start overflow-x-auto">
                 <TabsTrigger value="basic">Basic</TabsTrigger>
+                <TabsTrigger value="params">
+                  Parameters
+                  {draftHiddenNames.length > 0 && ` (${draftHiddenNames.length} hidden)`}
+                </TabsTrigger>
                 <TabsTrigger value="schema">Schema preview</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4 pt-2">
-                {editError && editError.field !== 'name' && (
-                  <p role="alert" className="rounded bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {editError.message}
-                  </p>
-                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="toolName">Tool name</Label>
                   <Input
@@ -158,19 +183,28 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                     rows={3}
                   />
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setEditingTool(null)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSave} disabled={isPending || nameError !== undefined}>
-                    {isPending ? 'Saving…' : 'Save'}
-                  </Button>
+              </TabsContent>
+
+              <TabsContent value="params" className="pt-2">
+                <div className="max-h-[50vh] overflow-y-auto pr-1">
+                  <ToolParameters
+                    fields={paramFields(editingTool.inputSchema)}
+                    draft={draft}
+                    errors={paramErrors}
+                    projectSlug={projectSlug}
+                    onChange={(name, next) => {
+                      setDraft((d) => ({ ...d, [name]: next }))
+                      setParamErrors(({ [name]: _cleared, ...rest }) => rest)
+                      setEditError(null)
+                    }}
+                  />
                 </div>
               </TabsContent>
 
               <TabsContent value="schema" className="pt-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
+                {/* grid-cols-1 and min-w-0: without them the single column below sm sizes to the widest line of the JSON and the dialog scrolls sideways. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="min-w-0">
                     <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Agent sees
                     </p>
@@ -178,14 +212,14 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                       {JSON.stringify(
                         toAgentSchema(
                           editingTool.inputSchema as object,
-                          editingTool.hiddenParams as object
+                          Object.fromEntries(draftHiddenNames.map((name) => [name, {}]))
                         ),
                         null,
                         2
                       )}
                     </pre>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Full schema
                     </p>
@@ -196,6 +230,20 @@ export function ToolList({ tools, projectSlug: _projectSlug }: ToolListProps) {
                 </div>
               </TabsContent>
             </Tabs>
+
+            {editError && editError.field !== 'name' && (
+              <p role="alert" className="rounded bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {editError.message}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingTool(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={isPending || nameError !== undefined}>
+                {isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
           </DialogContent>
         )}
       </Dialog>
@@ -221,8 +269,8 @@ function ToolRow({
         aria-label={`Toggle ${tool.name}`}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <code className="text-sm font-medium">{tool.name}</code>
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="break-all text-sm font-medium">{tool.name}</code>
           <Badge variant="outline" className="text-xs">
             {tool.method}
           </Badge>
@@ -239,7 +287,7 @@ function ToolRow({
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{tool.description}</p>
       </div>
-      <Button variant="ghost" size="icon" onClick={onEdit} title="Edit tool">
+      <Button variant="ghost" size="icon" onClick={onEdit} title={`Edit ${tool.name}`} aria-label={`Edit ${tool.name}`}>
         <Pencil className="h-3.5 w-3.5" />
       </Button>
     </div>

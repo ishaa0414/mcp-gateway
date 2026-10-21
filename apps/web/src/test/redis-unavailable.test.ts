@@ -78,10 +78,15 @@ describe('dashboard actions with Redis down', () => {
     expect(String(warn.mock.calls[0]![0])).toContain('relying on the TTL')
   })
 
-  it('stops waiting on Redis after the first failure', async () => {
-    const started = Date.now()
+  it('stops asking Redis after the first failure', async () => {
+    // Counts attempts instead of timing them: a wall-clock bound here measured the machine (it failed at 3 s on a
+    // starved CPU) and the behaviour is the number of times the dead Redis is asked. Each toggle logs exactly one
+    // line, either "could not invalidate" (an attempt) or "not invalidating" (skipped while paused).
+    warn.mockClear()
     for (let i = 0; i < 5; i++) expect(await actions.tools.updateToolEnabled(toolId, i % 2 === 0)).toEqual({})
-    expect(Date.now() - started).toBeLessThan(1_500)
+    const lines = warn.mock.calls.map((call) => String(call[0]))
+    expect(lines.filter((l) => l.includes('could not invalidate')).length).toBeLessThanOrEqual(1)
+    expect(lines.filter((l) => l.includes('could not invalidate') || l.includes('not invalidating'))).toHaveLength(5)
   })
 
   it('a description edit still succeeds', async () => {

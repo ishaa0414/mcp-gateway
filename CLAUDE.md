@@ -28,8 +28,9 @@ MCP Gateway is a SaaS platform that converts a team's REST API (described by an 
 - **Phase 1: Auth, Projects, OpenAPI Import, Tool Builder** ✅ Done (merged to main)
 - **Phase 2: Hosted MCP Server** ✅ Done (merged to main, #3)
 - **Phase 3: Rate Limiting and Logging** ✅ Done (merged to main, #4)
-- **Phase 4: Analytics Dashboard** — 🟡 In review (branch phase-4-analytics)
-- **Phase 5: Playground, Polish, Deploy** — future
+- **Phase 4: Analytics Dashboard** ✅ Done (merged to main, #5)
+- **Phase 5a: Playground and Connection Instructions** ✅ Done (branch `phase-5a-playground`, PR pending)
+- **Phase 5b: Deploy and Demo** — next
 
 ## Working Rules (from spec §10)
 
@@ -49,7 +50,9 @@ Always read docs/SPEC.md before starting any phase.
 ## Running the tests locally
 
 - Postgres and Redis must be up (`docker compose up -d`; ask before starting them). Then `pnpm test` from the root runs every package through Turborepo, in parallel.
-- Each package that touches Postgres has its **own test database**, created and migrated by its vitest `global-setup.ts` (`prepareTestDatabase` in `@mcp-gateway/db/test-database`): `mcpgateway_test_web`, `mcpgateway_test_gateway`, `mcpgateway_test_worker`. Nothing to create by hand, in CI either. `DATABASE_URL_TEST` (default `.../mcpgateway_test`) is only the base name they are derived from; the plain `mcpgateway_test` database is no longer used.
-- Never point two packages' tests at one database: the log-retention tests (`purgeOldLogs`) delete rows table-wide, with real and shifted clocks, and would remove another package's rows mid-run. A new package that needs Postgres gets its own suite name, not a shared database.
+- Each package that touches Postgres has its **own test database**, created and migrated by its vitest `global-setup.ts` (`prepareTestDatabase` in `@mcp-gateway/db/test-database`): `mcpgateway_test_web`, `mcpgateway_test_gateway`, `mcpgateway_test_worker`, and `mcpgateway_test_gatewayretention` (the two gateway files that run retention). Nothing to create by hand, in CI either. `DATABASE_URL_TEST` (default `.../mcpgateway_test`) is only the base name they are derived from; the plain `mcpgateway_test` database is no longer used.
+- Never point two packages' tests at one database: the log-retention tests (`purgeOldLogs`) delete rows table-wide, with real and shifted clocks, and would remove another package's rows mid-run. A new package that needs Postgres gets its own suite name, not a shared database. The same goes inside the gateway suite: a test file that runs `purgeOldLogs` or the retention timer calls `useRetentionDatabase()` (`apps/gateway/src/test/retention-database.ts`), and a test enforces that.
 - Tests use Redis database 1 (the dev gateway uses 0). BullMQ queue names in tests carry a random suffix, so packages do not share queues.
 - One package: `pnpm --filter @mcp-gateway/web test`.
+- The Playground needs `PLAYGROUND_SECRET` in the root `.env` (the same value for web and gateway). Generate it into the file without printing it: `node -e "const f=require('fs');const t=f.existsSync('.env')?f.readFileSync('.env','utf8'):'';if(/^PLAYGROUND_SECRET=/m.test(t)){console.log('PLAYGROUND_SECRET is already set; left as it is')}else{f.appendFileSync('.env','\nPLAYGROUND_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n');console.log('PLAYGROUND_SECRET added')}"`. Never paste it in chat.
+- Web tests: `src/test/setup.ts` warms and discards a DB client in every test file (the first Prisma query is slow when cold), `hookTimeout` is 60 s in `vitest.config.ts`, and a heavy test gets its own explicit `timeout` with a comment saying why. Do not raise the global `testTimeout`.

@@ -29,7 +29,8 @@ describe('normalizeEmail / emailSchema', () => {
 })
 
 describe('sign-up and sign-in use the same normalisation', () => {
-  it('stores the normalised email on sign-up', async () => {
+  // Hashes a password with argon2, which is slow on purpose: 0.85 s idle, 2.8 s with the CPU starved.
+  it('stores the normalised email on sign-up', { timeout: 30_000 }, async () => {
     const res = await signUp({ name: ' Ada ', email: `  ${local}@Example.COM `, password })
     expect(res).toEqual({})
 
