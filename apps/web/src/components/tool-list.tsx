@@ -202,8 +202,9 @@ export function ToolList({ tools, projectSlug }: ToolListProps) {
               </TabsContent>
 
               <TabsContent value="schema" className="pt-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
+                {/* grid-cols-1 and min-w-0: without them the single column below sm sizes to the widest line of the JSON and the dialog scrolls sideways. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="min-w-0">
                     <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Agent sees
                     </p>
@@ -218,7 +219,7 @@ export function ToolList({ tools, projectSlug }: ToolListProps) {
                       )}
                     </pre>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Full schema
                     </p>
@@ -286,7 +287,7 @@ function ToolRow({
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{tool.description}</p>
       </div>
-      <Button variant="ghost" size="icon" onClick={onEdit} title="Edit tool">
+      <Button variant="ghost" size="icon" onClick={onEdit} title={`Edit ${tool.name}`} aria-label={`Edit ${tool.name}`}>
         <Pencil className="h-3.5 w-3.5" />
       </Button>
     </div>

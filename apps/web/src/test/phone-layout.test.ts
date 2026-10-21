@@ -4,7 +4,7 @@
  * attributes, scrolling tabs, cards instead of a wide table. What a drawer does once open (Esc, focus trap,
  * focus return) is Radix Dialog's behaviour and is checked in the browser, not here.
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -17,6 +17,7 @@ vi.mock('@/auth', () => ({ signOut: async () => undefined }))
 import { ApiKeysPanel } from '@/components/api-keys-panel'
 import { MobileNav } from '@/components/mobile-nav'
 import { ProjectNav } from '@/components/project-nav'
+import { ToolList } from '@/components/tool-list'
 import { Sidebar, SidebarContent } from '@/components/sidebar'
 import { ToolParameters } from '@/components/tool-parameters'
 import { buildFields } from '@/lib/playground/fields'
@@ -196,5 +197,77 @@ describe('guards against the patterns that broke at 375 px', () => {
     for (const file of PAGE_FILES) {
       expect(source(file).match(/(?<![:\w-])grid-cols-[3-9]\b/g) ?? [], `${file} has a bare grid-cols-3+`).toEqual([])
     }
+  })
+})
+
+/** Every .tsx file under src/app and src/components. */
+function tsxFiles(dir: string): string[] {
+  return readdirSync(join(SRC, dir), { withFileTypes: true }).flatMap((entry) => {
+    const rel = `${dir}/${entry.name}`
+    if (entry.isDirectory()) return tsxFiles(rel)
+    return entry.name.endsWith('.tsx') ? [rel] : []
+  })
+}
+
+describe('a grid that only gets columns at a breakpoint', () => {
+  // Below that breakpoint the grid has one implicit `auto` column, and a grid item's minimum width is its content: a
+  // wide line of JSON or an unbroken slug stretches the column, and with it the dialog or the page. This measured
+  // 393 px of scroll in a 326 px dialog at 375 px. `grid-cols-1` is a minmax(0, 1fr) column and holds the width.
+  it('always sets its phone columns too (grid-cols-1, or an explicit count), in every component and page', () => {
+    const offenders: string[] = []
+    for (const file of [...tsxFiles('app'), ...tsxFiles('components')]) {
+      for (const match of source(file).matchAll(/(["'`])((?:(?!\1)[^\n])*)\1/g)) {
+        const value = match[2]!
+        const classes = value.split(/\s+/)
+        const columnsAtBreakpoint = classes.some((c) => /^(sm|md|lg|xl):grid-cols-/.test(c))
+        const columnsForPhone = classes.some((c) => /^grid-cols-/.test(c))
+        if (classes.includes('grid') && columnsAtBreakpoint && !columnsForPhone) offenders.push(`${file}: ${value}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('the scan finds what it is meant to find (it is not vacuous)', () => {
+    const files = [...tsxFiles('app'), ...tsxFiles('components')]
+    const grids = files.flatMap((file) => source(file).match(/className="[^"]*\bgrid\b[^"]*\bsm:grid-cols-\d[^"]*"/g) ?? [])
+    expect(grids.length).toBeGreaterThanOrEqual(3)
+    expect(grids.every((g) => /\bgrid-cols-1\b/.test(g))).toBe(true)
+  })
+})
+
+describe('the Edit tool dialog at 375 px', () => {
+  it('the Schema preview grid has a phone column, and both columns can shrink below their content', () => {
+    const text = source('components/tool-list.tsx')
+    expect(text).toContain('<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">')
+    const from = text.indexOf('<TabsContent value="schema"')
+    const preview = text.slice(from, text.indexOf('</TabsContent>', from))
+    expect(preview.match(/<div className="min-w-0">/g)).toHaveLength(2)
+    expect(preview.match(/<pre className="max-h-64 overflow-auto/g)).toHaveLength(2)
+  })
+
+  it('every dialog has a single column that cannot be sized by its content', () => {
+    expect(source('components/ui/dialog.tsx')).toContain('z-50 grid grid-cols-[minmax(0,1fr)]')
+  })
+})
+
+describe('accessible names', () => {
+  const tool = (name: string) => ({ id: name, name, description: 'd', method: 'GET', path: `/${name}`, enabled: true, removedAt: null, inputSchema: { type: 'object', properties: {} }, hiddenParams: {} })
+
+  it('each pencil button in the Tools list is named for its tool, not just "Edit tool"', () => {
+    const html = renderToStaticMarkup(createElement(ToolList, { tools: [tool('getPet'), tool('createPet')] as never, projectSlug: 'shop' }))
+    expect(html).toContain('aria-label="Edit getPet"')
+    expect(html).toContain('aria-label="Edit createPet"')
+    expect(html).not.toMatch(/aria-label="Edit tool"/)
+    expect(html).not.toMatch(/title="Edit tool"/)
+  })
+
+  it('the Analytics range links mark the selected range with aria-current="true", not "page" (the tab is the page)', () => {
+    const page = source('app/(dashboard)/projects/[slug]/analytics/page.tsx')
+    expect(page).toContain("aria-current={r === range ? 'true' : undefined}")
+    expect(page).not.toContain("'page'")
+  })
+
+  it('the project tab for the current page still uses aria-current="page"', () => {
+    expect(renderToStaticMarkup(createElement(ProjectNav, { slug: 'shop' }))).toContain('aria-current="page"')
   })
 })

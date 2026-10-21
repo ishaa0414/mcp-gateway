@@ -185,7 +185,7 @@ function RangePicker({ slug, range }: { slug: string; range: Range }) {
         <Link
           key={r}
           href={`/projects/${slug}/analytics?range=${r}`}
-          aria-current={r === range ? 'page' : undefined}
+          aria-current={r === range ? 'true' : undefined}
           className={cn(
             'rounded px-3 py-1 text-sm font-medium transition-colors',
             r === range ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
