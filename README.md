@@ -2,7 +2,7 @@
 
 Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server that AI agents can connect to — in 10 minutes.
 
-> **Status:** Phase 4 done, Phase 5a (playground and connection guides) in progress — import an OpenAPI spec, curate tools, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging and an analytics dashboard.
+> **Status:** Phases 0–4 and Phase 5a done; Phase 5b (deployment and demo) next — import an OpenAPI spec, curate tools, try them in a playground, and serve them as a hosted MCP endpoint behind API keys, with per-key rate limiting, call logging, an analytics dashboard and copy-paste connection guides.
 
 ## Prerequisites
 
@@ -102,6 +102,50 @@ To fill a project with demo data (local development database only; the script re
 ```bash
 pnpm db:seed:analytics --project <slug>   # add --rows N for more; re-running replaces the previous seed rows
 ```
+
+## Playground
+
+The **Playground** tab runs one of a project's enabled tools against your real API and shows the request and the response. Pick a tool, fill in its parameters and click **Run**. Tools that change data (anything but GET) ask for a confirmation first. Credentials are shown as `••••`; parameters you hid from agents are never sent.
+
+The dashboard does not use an API key for this. Its server signs the request (HMAC-SHA256, 60 s window, one-time nonce) with `PLAYGROUND_SECRET` and sends it to an internal gateway route, which is only registered when the secret is set. Playground calls are limited per project (30 a minute by default) and are not written to the call log, so they do not show in Analytics. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the path end to end.
+
+Set the secret once in the root `.env`, with the same value for the dashboard and the gateway. This appends a random one without printing it (run it once; a second run would add a second line):
+
+```bash
+node -e "require('fs').appendFileSync('.env','\nPLAYGROUND_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n')"
+```
+
+Never paste the secret into a chat or a ticket. Without it the tab shows "Playground not configured".
+
+## Connect
+
+The **Connect** tab gives copy-paste setup for MCP Inspector, Claude Code, Cursor and VS Code. Each snippet reads your API key from a per-project environment variable (`<SLUG>_MCP_KEY`, for example `PETSTORE_DEMO_MCP_KEY`), so the key itself is never in the snippet. The tab also shows how to set that variable without echoing the key.
+
+## Configuration
+
+The variables below are the ones you will most likely touch. `.env.example` lists every variable with its default and a comment.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `PLAYGROUND_SECRET` | unset | Shared by the dashboard and the gateway (at least 32 bytes). Unset: no playground route, and the tab says it is not configured. |
+| `PLAYGROUND_RATE_PER_MIN` | `30` | Playground calls per project per minute (1–1000). |
+| `GATEWAY_INTERNAL_URL` | `GATEWAY_PUBLIC_URL` | Where the dashboard's server reaches the gateway for playground calls. |
+| `TOOL_CALL_TIMEOUT_MS` | `15000` | How long the gateway waits for your API. The playground waits this plus 5 s. Keep it equal on both sides. |
+| `GATEWAY_PUBLIC_URL` | `http://localhost:4000` | The address agents use; shown in the MCP URL and the Connect snippets. |
+
+### Opening the dashboard
+
+`pnpm dev` binds the dashboard to `127.0.0.1` only, so open it as `http://localhost:3000` (`AUTH_URL` is set to that). To reach it from a phone on your network, use the `--hostname 0.0.0.0` override and `AUTH_URL` change described in step 1 of [Try it](#try-it-from-an-openapi-spec-to-mcp-inspector).
+
+### How fresh is what the gateway serves?
+
+The gateway caches in Redis so a call does not hit Postgres every time. The dashboard clears the right entries when you change something:
+
+- Revoking an API key takes effect within about 30 seconds at most (`API_KEY_CACHE_TTL_SECONDS`, default 30; a key that was not found is remembered for 10 s).
+- Toggling or editing a tool (including hidden parameters), re-importing the spec, changing credentials, editing project settings and deleting a project all clear the project's cached config at once.
+- If Redis is unreachable at that moment, the clear is skipped and the dashboard stops trying for 30 s. The gateway then serves the old config until `CONFIG_CACHE_TTL_SECONDS` runs out (default 300, so up to about 5 minutes).
+
+The Playground reads the same cached config as agents do.
 
 ## Run the gateway in Docker
 

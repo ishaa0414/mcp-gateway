@@ -1,6 +1,6 @@
 # Architecture
 
-> Last updated: Phase 3 — Rate limiting and call logging
+> Last updated: Phase 5a — the Playground, the Connect guides and the signed internal route
 
 ## System Overview
 
@@ -38,6 +38,7 @@ graph TD
 
     UI -->|"manage projects, tools, keys"| PG
     UI -->|"invalidate tool cache"| RD
+    UI -->|"playground: signed run (HMAC)"| GW
 
     Agent -->|"MCP Streamable HTTP"| GW
     GW -->|"1. check API key hash"| PG
@@ -60,8 +61,8 @@ graph TD
 | `apps/web` | Next.js App Router dashboard — UI + server actions + route handlers |
 | `apps/gateway` | Fastify MCP server — public, multi-tenant, stateless |
 | `apps/worker` | BullMQ consumer (queue mode) — writes call-log batches to Postgres and deletes rows past retention |
-| `packages/db` | Prisma schema, client singleton (driver adapter), migrations, seed |
-| `packages/shared` | SSRF-safe fetch, env validation, Redis cache key names and invalidation helpers |
+| `packages/db` | Prisma schema, client singleton (driver adapter), migrations, log writing and retention. Two subpaths: `@mcp-gateway/db/seed` (the analytics seed, kept out of the main entry so the gateway does not load it) and `@mcp-gateway/db/test-database` (one test database per suite) |
+| `packages/shared` | SSRF-safe fetch, env validation, Redis cache key names and invalidation helpers, argument masking, the Playground request signature (`playground-signature.ts`) and the upstream timeout defaults (`timeouts.ts`) |
 | `packages/openapi-tools` | Pure library: OpenAPI → tool definitions, argument-to-request mapping, request building, re-import merging |
 | `packages/crypto` | AES-256-GCM encrypt/decrypt + API key generation/hashing |
 
@@ -84,7 +85,7 @@ See [DECISIONS.md](./DECISIONS.md) for the full log.
 3. **Rate limit.** A `tools/call` counts against the key's limit (`ApiKey.rateLimitPerMin`, calls per rolling 60 s); over it, the answer is HTTP 429 with `Retry-After` before anything else runs. Other methods (`initialize`, `tools/list`) are free. See below.
 4. **Resolve the tool.** Only enabled, non-removed tools exist. Anything else is the same `-32602` "Unknown tool".
 5. **Validate** the arguments against the tool's agent-facing schema (hidden parameters removed). A failure is an `isError` result the model can read and correct.
-6. **Build the request.** Hidden parameters' fixed values are merged last, so they always win. Arguments are mapped to path, query, header, cookie or body.
+6. **Build the request.** Hidden parameters' fixed values are merged last, so they always win; a hidden parameter fixed to `null` means "never send it" and is left out (`hiddenArguments` in `apps/gateway/src/mcp/call-tool.ts`). Arguments are mapped to path, query, header, cookie or body.
 7. **Authenticate to the upstream.** The credential is decrypted in memory for this one call and sent as a bearer token, a custom header, or a query parameter.
 8. **Call the upstream** through `ssrfFetch`: public addresses only, no redirects, one 15 s deadline, a 1 MB response cap.
 9. **Answer.** A 2xx becomes text content. Everything else (4xx/5xx, timeout, oversize, redirect, blocked host, unreachable) becomes an `isError` result with fixed wording. The credential is scrubbed from every outgoing string, in raw, URL-encoded and base64 form.
@@ -94,6 +95,51 @@ Each tool call also produces a log event (see Call logging), including calls tha
 ### Rate limiting
 
 One Redis sorted set per key (`mcp:rl:<apiKeyId>`) holds a member per accepted call, scored by its time. One Lua script trims, counts and either rejects (returning the exact wait) or records the call, so concurrent requests cannot all pass the check. The clock is the gateway's, passed in as an argument. Rejected calls are not recorded. The 429 body is a JSON-RPC error (code -32029) whose message names the limit and the wait, because MCP clients print the body and not the status. If Redis is unreachable the call is allowed (fail open), a 5 s circuit breaker stops each call from waiting out the Redis timeout, and one warning is logged per window.
+
+## Playground: running a tool from the dashboard
+
+The Playground tab calls a tool on the project's real API and shows the exact request and response. It is a different door from `/mcp`. The dashboard holds no API key (keys are hashed and shown once), and a call through `/mcp` would be counted against a key and logged as agent traffic, so the dashboard's server asks the gateway to run the call with a **signed request** that only a server holding `PLAYGROUND_SECRET` can make.
+
+```
+ Browser       Dashboard (web)        Gateway              Upstream API
+    |                |                    |                      |
+    |  Run (confirm) |                    |                      |
+    |--------------->|                    |                      |
+    |                | signed POST        |                      |
+    |                |------------------->|                      |
+    |                |                    | checks 1-6 (below)   |
+    |                |                    | callUpstream(preview)|
+    |                |                    |--------------------->|
+    |                |                    |<---------------------|
+    |                | masked request     |                      |
+    |                | and response       |                      |
+    |                |<-------------------|                      |
+    |  result panel  |                    |                      |
+    |<---------------|                    |                      |
+```
+
+**The dashboard side** (`apps/web/src/actions/playground.ts`, a server action). It checks the signed-in user (`auth()`), that `PLAYGROUND_SECRET` is set (else the tab shows "not configured"), that the project belongs to the user and the tool is enabled and not removed (anything else is the same `not_found`), and that a tool whose method is not GET came with `confirmed: true`, all before any network call. It then signs the request and posts it to `POST {GATEWAY_INTERNAL_URL or GATEWAY_PUBLIC_URL}/internal/playground/:slug/run`, waiting at most the tool timeout plus a margin: 15 s + 5 s by default (`packages/shared/src/timeouts.ts`). Every outcome comes back as a value (`ok`, `invalid`, `rate_limited`, `not_configured`, `misconfigured`, `unavailable`, `gateway_timeout`, …), never a thrown error, and neither arguments nor results are logged.
+
+**The signature** (`packages/shared/src/playground-signature.ts`, used by both sides). HMAC-SHA256, with the secret, over `timestamp.nonce.slug.tool.sha256(body)`. The nonce is 16 random bytes in hex. It is sent as the headers `x-playground-timestamp`, `x-playground-nonce` and `x-playground-signature`. The gateway accepts a timestamp within 60 s of its own clock in either direction and compares in constant time. The secret must be at least 32 bytes, and the same in the dashboard and the gateway.
+
+**The gateway side** (`apps/gateway/src/routes/playground.ts`). The route exists only if `PLAYGROUND_SECRET` is set (`apps/gateway/src/app.ts`); without it the path is an ordinary 404. The checks run in this order and each can end the request:
+
+1. The signature verifies and is fresh, else `401 unauthorized`.
+2. The nonce has not been used. `SET mcp:pg:nonce:<nonce> NX` with a 120 s expiry (twice the window, so it outlives every timestamp that could still be accepted); a repeat is `401 replayed`. **This check fails closed:** if Redis cannot answer, the request is refused with `503 playground_unavailable` and nothing runs, because skipping it would let a captured request be replayed while Redis is down.
+3. The body is valid (`400 invalid_request`).
+4. The project and tool are loaded through the same cache as `/mcp` (`loadProjectConfig`, so only enabled, non-removed tools exist). An unknown project, a disabled or removed tool and an unknown tool give the identical `404 not_found`.
+5. A tool whose method is not GET needs `confirmed: true` in the body, else `400 confirmation_required`. This is enforced here as well as in the dashboard.
+6. At most 30 calls a minute per project (`PLAYGROUND_RATE_PER_MIN`, 1 to 1,000), in its own Redis key (`mcp:rl:playground:<projectId>`), else `429 rate_limited` with `Retry-After`. Like the per-key limiter, it fails open if Redis is down.
+
+**The call and the preview.** The route runs `callUpstream(..., { preview: true })` (`apps/gateway/src/mcp/call-tool.ts`), the same function that serves `/mcp`, so validation, the SSRF guard, the timeout and the size cap are not duplicated. Besides the normal outcome it returns what a person may see:
+
+- *Request:* built before the credential is added. The credential shows as `••••` (by kind: bearer, header or query parameter), hidden parameters as `HIDDEN`, and header, query and body names that look sensitive as `[MASKED]`.
+- *Response:* the status, a short allowlist of headers (`content-type`, `content-length`, `date`, `cache-control`, `etag`, `last-modified`, `retry-after`, `ratelimit-*` and `x-ratelimit-*`; never `set-cookie`), a text body cut at 100,000 characters, or just the type and size for a binary one.
+- *Redaction:* the only thing replaced in what comes back is the project credential, in plain and encoded forms. A hidden parameter's value is not a secret (see DECISIONS).
+
+The route returns only that preview, never the MCP result text.
+
+**What it does not do.** It writes no `tool_call_logs` row and queues no log event, so Playground runs never appear in Analytics (it logs one line with project, tool, status and latency). A `source` column that would let them be shown, filtered out, is a possible later step.
 
 ## Call logging
 
@@ -141,10 +187,14 @@ Redis only caches what Postgres already holds, so a Redis failure is a cache mis
 
 | Key | Holds | TTL | Cleared when |
 |---|---|---|---|
-| `mcp:cfg:<slug>` | base URL, encrypted credential, enabled tools and their request maps | 5 min | a tool is edited or toggled, a spec is imported, project settings or the credential change, the project is deleted |
-| `mcp:key:<hash>` | API key lookup (a miss is cached for 10 s) | 30 s | the key is revoked, or its project is deleted |
+| `mcp:cfg:<slug>` | base URL, encrypted credential, enabled tools and their request maps | 5 min (`CONFIG_CACHE_TTL_SECONDS`, default 300) | a tool is edited or toggled (including its hidden parameters), a spec is imported, project settings or the credential change, the project is deleted |
+| `mcp:key:<hash>` | API key lookup (a miss is cached for 10 s) | 30 s (`API_KEY_CACHE_TTL_SECONDS`, default 30) | the key is revoked, or its project is deleted |
 
-The dashboard clears keys through `CacheInvalidator` and fails open: if Redis is unreachable the edit still succeeds, a warning is logged, and the TTL bounds the staleness (a revoked key keeps working for at most 30 s).
+The dashboard clears keys through `CacheInvalidator` (`apps/web/src/lib/cache-invalidator.ts`) and fails open: if Redis is unreachable the edit still succeeds, a warning is logged, and the TTL bounds the staleness. Its Redis client gives up after 1 s (`apps/web/src/lib/redis.ts`), and after one failure the invalidator stops trying for 30 s, so an outage costs one short delay, not one per edit.
+
+**How stale can the gateway be?** When invalidation works, a change is seen on the next request. When it cannot reach Redis, a revoked API key can keep working for up to the key TTL (30 s by default) and a tool, spec, credential or settings change can take up to the config TTL (5 min by default) to reach the gateway. Both are the defaults and can be changed with the variables above. The Playground reads the same cached configuration (`loadProjectConfig`), so it sees the same staleness.
+
+The Playground adds two Redis keys that are not caches: `mcp:pg:nonce:<nonce>` (120 s, the replay check) and `mcp:rl:playground:<projectId>` (the 30 per minute limit).
 
 ## Deploying the gateway
 

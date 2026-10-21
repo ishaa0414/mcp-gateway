@@ -121,11 +121,20 @@ Redis sliding-window rate limiting per API key (HTTP 429 with a clear JSON-RPC b
 Call volume over time, top tools, error rate, p50/p95 latency, recent calls table with detail view, all computed from `ToolCallLog` with the Phase 3 indexes (no rollup table). Charts using a lightweight library. *Deviation:* the chart is hand-rolled SVG, with no library (see the "Analytics tab" entry in [DECISIONS.md](DECISIONS.md#analytics-tab-zone-from-a-cookie-range-in-the-url-actions-return-results)).
 *Done when:* dashboard shows real data from seeded/test calls.
 
-**Phase 5: Playground, Connection Instructions, Polish, Deploy**
-Playground (schema-driven form → raw upstream request/response). Connection instructions page (MCP Inspector, Claude, Cursor, VS Code). Empty, loading and error states throughout. Playwright tests for the main flow. Free deployment guide (Vercel for `web`, free VM or Cloudflare Tunnel for gateway + worker + Redis, Neon for Postgres). Live deployment.
-*Docs still to write:* the README states how stale the gateway's cache can be when a dashboard edit cannot clear it (Redis down): a revoked API key can keep working for up to 30 s, and tool or configuration changes can take up to 5 minutes to reach the gateway.
-*Also in this phase (carried over from Phase 2):* give `@mcp-gateway/openapi-tools` a lightweight runtime entry (request map, request build, agent schema) so the gateway no longer loads `swagger-parser` at startup, and slim the gateway Docker image.
-*Done when:* someone new can follow the README and get everything running end-to-end.
+**Phase 5a: Playground and Connection Instructions** ✅ *Done*
+Playground tab (schema-driven form, masked upstream request and response, confirmation for non-GET tools), Connect tab (MCP Inspector, Claude Code, Cursor, VS Code, key read from `<SLUG>_MCP_KEY`), loading, error and not-found states, a dashboard that works at phone width, and cache-staleness notes in the README. *Deviation:* the Playground does not call `/mcp` with a key; it uses a signed internal gateway route (see the "signed internal gateway route" and "fails closed" entries in [DECISIONS.md](DECISIONS.md)). Also shipped: the seed helpers moved to `@mcp-gateway/db/seed`, per-package test databases, `next dev` bound to 127.0.0.1, GitHub Actions at their current majors.
+*Done when:* a project's enabled tools can be run from the dashboard and connected from four clients by following the Connect tab.
+
+**Phase 5b: Deploy and Demo** — *Next*
+- Free deployment guide (Vercel for `web`, free VM or Cloudflare Tunnel for gateway + worker + Redis, Neon for Postgres) and a live deployment.
+- Playwright tests for the main flow.
+- A lightweight runtime entry in `@mcp-gateway/openapi-tools` (request map, request build, agent schema) so the gateway no longer loads `swagger-parser` at startup, and a slimmer gateway Docker image, including dropping the seed files from it.
+- Re-enable the `getPetById` tool in the demo project.
+- Check the Prisma connect timeout before deploying.
+- Playground calls in analytics, via a `source` column on the call log.
+- Upgrade to Node 22.19 or newer.
+- README screenshots, an architecture diagram and demo data; a demo video.
+*Done when:* someone new can follow the README and get everything running end-to-end, and the live demo works.
 
 ## 10. Working rules for Claude Code
 
