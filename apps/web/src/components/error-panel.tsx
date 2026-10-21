@@ -16,7 +16,7 @@ export function ErrorPanel({ error, retry }: RouteErrorProps) {
   const digest = typeof error.digest === 'string' && error.digest !== '' ? error.digest : null
 
   return (
-    <div role="alert" className="mx-auto max-w-lg space-y-4 p-8">
+    <div role="alert" className="mx-auto max-w-lg space-y-4 p-4 md:p-8">
       <h2 className="text-lg font-semibold">Something went wrong.</h2>
       <p className="text-sm text-muted-foreground">
         {digest ? (

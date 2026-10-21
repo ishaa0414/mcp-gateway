@@ -6,7 +6,7 @@ import Link from 'next/link'
  */
 export function NotFoundPanel({ title, message }: { title: string; message: string }) {
   return (
-    <div className="mx-auto max-w-lg space-y-4 p-8">
+    <div className="mx-auto max-w-lg space-y-4 p-4 md:p-8">
       <h2 className="text-lg font-semibold">{title}</h2>
       <p className="text-sm text-muted-foreground">{message}</p>
       <Link href="/projects" className="inline-block text-sm underline underline-offset-2">

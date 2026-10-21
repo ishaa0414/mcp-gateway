@@ -76,9 +76,9 @@ export default async function AnalyticsPage({ params, searchParams }: Props) {
             <p>Calls appear here a few seconds after an agent makes them.</p>
             <p>
               To try it, connect <span className="font-medium text-foreground">MCP Inspector</span> to this project&apos;s endpoint with an API key
-              and run a tool. The connection snippet is on the{' '}
-              <Link href={`/projects/${slug}/overview`} className="underline underline-offset-2">
-                Overview
+              and run a tool. The connection guides are on the{' '}
+              <Link href={`/projects/${slug}/connect`} className="underline underline-offset-2">
+                Connect
               </Link>{' '}
               tab; keys are on the{' '}
               <Link href={`/projects/${slug}/api-keys`} className="underline underline-offset-2">

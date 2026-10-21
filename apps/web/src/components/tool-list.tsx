@@ -142,7 +142,7 @@ export function ToolList({ tools, projectSlug }: ToolListProps) {
             </DialogHeader>
 
             <Tabs value={tab} onValueChange={setTab}>
-              <TabsList>
+              <TabsList className="max-w-full justify-start overflow-x-auto">
                 <TabsTrigger value="basic">Basic</TabsTrigger>
                 <TabsTrigger value="params">
                   Parameters
@@ -268,8 +268,8 @@ function ToolRow({
         aria-label={`Toggle ${tool.name}`}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <code className="text-sm font-medium">{tool.name}</code>
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="break-all text-sm font-medium">{tool.name}</code>
           <Badge variant="outline" className="text-xs">
             {tool.method}
           </Badge>
