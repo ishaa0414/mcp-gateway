@@ -11,6 +11,10 @@
     "./test-database": {
       "import": "./dist/test-database.js",
       "types": "./dist/test-database.d.ts"
+    },
+    "./seed": {
+      "import": "./dist/seed.js",
+      "types": "./dist/seed.d.ts"
     }
   },
   "main": "./dist/index.js",

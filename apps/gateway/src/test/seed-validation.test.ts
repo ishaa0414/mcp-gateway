@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
-import { FALLBACK_SEED_TOOLS, createRandom, sampleInvalidInput } from '@mcp-gateway/db'
+import { FALLBACK_SEED_TOOLS, createRandom, sampleInvalidInput } from '@mcp-gateway/db/seed'
 
 type Check = (input: unknown) => { valid: true; data: unknown } | { valid: false; errorMessage: string }
 

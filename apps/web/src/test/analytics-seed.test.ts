@@ -3,7 +3,8 @@
  * project, is repeatable, and produces rows that pass the same validation as real ones.
  */
 import { describe, it, expect, afterAll } from 'vitest'
-import { db, seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError } from '@mcp-gateway/db'
+import { db } from '@mcp-gateway/db'
+import { seedAnalyticsLogs, assertSeedAllowed, buildSeedEvents, SeedRefusedError } from '@mcp-gateway/db/seed'
 import { logEventSchema } from '@mcp-gateway/shared/log-event'
 
 const LOCAL = { NODE_ENV: 'development', DATABASE_URL: 'postgresql://u:p@localhost:5432/mcpgateway_test' }
