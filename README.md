@@ -46,7 +46,7 @@ pnpm dev
 
 | App | URL | Description |
 |---|---|---|
-| `apps/web` | http://localhost:3000 | Next.js dashboard |
+| `apps/web` | http://localhost:3000 | Next.js dashboard (the dev server listens on 127.0.0.1 only) |
 | `apps/gateway` | http://localhost:4000 | Fastify MCP gateway |
 | `apps/worker` | — | BullMQ log consumer (writes call logs, deletes old ones) |
 
@@ -73,7 +73,7 @@ curl http://localhost:4000/health
 
 ## Try it: from an OpenAPI spec to MCP Inspector
 
-1. Start everything (`docker compose up -d`, then `pnpm dev`) and sign up at http://localhost:3000.
+1. Start everything (`docker compose up -d`, then `pnpm dev`) and sign up at http://localhost:3000. Open it as `localhost`, not `127.0.0.1`: sign-in is tied to the `AUTH_URL` address. The dev server and the gateway listen on this machine only; to reach the dashboard from a phone on your network, run `pnpm --filter @mcp-gateway/web exec next dev --hostname 0.0.0.0` and set `AUTH_URL` to that address.
 2. **New project**, then on the **Spec** tab import a spec by URL, for example `https://petstore3.swagger.io/api/v3/openapi.json`. The upstream base URL is filled in from the spec.
 3. On **Tools**, switch off the operations you do not want agents to see. Rename them or hide parameters if you like.
 4. If your API needs authentication, set it under **Settings → Upstream authentication**. The secret is stored encrypted and never shown again.
