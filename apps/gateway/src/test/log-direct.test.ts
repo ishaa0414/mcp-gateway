@@ -6,6 +6,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createLogSink, type LogSettings } from '../logging/index.js'
 import { startRetention } from '../logging/retention.js'
 import { cleanupFixtures, createFixture, rpc, startGateway, startUpstream, json, type MockUpstream } from './harness.js'
+import { useRetentionDatabase } from './retention-database.js'
+
+// This file runs the sink's retention timer, which purges every old row in its table: on its own database.
+useRetentionDatabase()
 
 const REDIS_URL = process.env['REDIS_URL_TEST'] ?? 'redis://localhost:6379/1'
 const log = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })

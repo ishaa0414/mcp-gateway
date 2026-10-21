@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import { db, purgeOldLogs, writeLogBatch } from '@mcp-gateway/db'
 import type { LogEvent } from '@mcp-gateway/shared'
 import { afterAll, describe, expect, it } from 'vitest'
+import { testDatabaseUrl } from '@mcp-gateway/db/test-database'
 import { cleanupFixtures, createFixture, type Fixture } from './harness.js'
+import { useRetentionDatabase, withMainDatabase } from './retention-database.js'
+
+// purgeOldLogs deletes every old row in its table, so this file runs on its own database.
+useRetentionDatabase()
 
 afterAll(async () => {
   await cleanupFixtures()
@@ -80,5 +85,50 @@ describe('purgeOldLogs (used by both sink modes)', () => {
     expect(await rowsOf([e.id])).toHaveLength(1)
     await purgeOldLogs(db, { days: 30, now: () => Date.now() + 10 * DAY })
     expect(await rowsOf([e.id])).toHaveLength(0)
+  })
+})
+
+describe('the retention tests have a database of their own', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const nameOf = (url: string) => decodeURIComponent(new URL(url).pathname.slice(1))
+
+  it('runs on the retention database, not the one the rest of the gateway suite uses', async () => {
+    const [row] = await db.$queryRaw<{ name: string }[]>`SELECT current_database() AS name`
+    expect(row!.name).toBe(nameOf(testDatabaseUrl('gatewayretention')))
+    expect(row!.name).not.toBe(nameOf(testDatabaseUrl('gateway')))
+  })
+
+  it('a purge here leaves a 100-day-old row in the main gateway database alone', async () => {
+    const rowId = randomUUID()
+    let userId = ''
+    await withMainDatabase(async () => {
+      const user = await db.user.create({ data: { email: `isolation-${rowId}@test.local`, name: 'Isolation' } })
+      userId = user.id
+      const project = await db.project.create({ data: { userId, name: 'Isolation', slug: `iso-${rowId.slice(0, 8)}`, upstreamBaseUrl: '' } })
+      await writeLogBatch(db, [
+        {
+          id: rowId,
+          kind: 'TOOL_CALL',
+          projectId: project.id,
+          apiKeyId: null,
+          toolId: null,
+          toolName: 'listPets',
+          input: {},
+          upstreamStatus: 200,
+          latencyMs: 5,
+          success: true,
+          errorClass: null,
+          errorMessage: null,
+          responseBytes: 1,
+          timestamp: Date.now() - 100 * DAY,
+        },
+      ])
+    })
+    try {
+      await purgeOldLogs(db, { days: 30 }) // on the retention database: everything old that is there goes
+      expect(await withMainDatabase(() => db.toolCallLog.count({ where: { id: rowId } }))).toBe(1)
+    } finally {
+      await withMainDatabase(() => db.user.deleteMany({ where: { id: userId } })) // projects and logs cascade
+    }
   })
 })
