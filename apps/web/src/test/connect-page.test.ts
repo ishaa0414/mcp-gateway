@@ -86,7 +86,10 @@ describe('the Connect page', () => {
     expect(payload).toContain(`https://gw.example.com/mcp/${slug}`)
     expect(payload).toContain(`claude mcp add --transport http ${slug} `)
     expect(payload).toContain(`${slug.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MCP_KEY`)
-    expect(payload).toContain('<YOUR_API_KEY>')
+    expect(payload).toContain('Read-Host')
+    expect(payload).toContain('AsSecureString')
+    expect(payload).toContain('read -rs')
+    expect(payload).not.toContain('<YOUR_API_KEY>')
     expect(payload).toContain(`/projects/${slug}/api-keys`) // the way to get a key
   })
 
@@ -97,6 +100,17 @@ describe('the Connect page', () => {
     expect(payload).not.toContain(realKey.hash)
     expect(payload).not.toContain(realKey.prefix)
     expect(payload).not.toMatch(/mcpg_/)
+  })
+
+  it('has a troubleshooting card for "fetch failed", with a length check for the right variable', async () => {
+    settings.value = { GATEWAY_PUBLIC_URL: 'https://gw.example.com' }
+    const payload = serialise(await render(slug))
+    const name = `${slug.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MCP_KEY`
+    expect(payload).toContain('Troubleshooting')
+    expect(payload).toContain('fetch failed')
+    expect(payload).toContain('Check its length first')
+    expect(payload).toContain(`$env:${name}.Length`)
+    expect(payload).toContain('37 characters')
   })
 
   it('warns that a localhost address only works on this machine, and says nothing of the kind for a public one', async () => {

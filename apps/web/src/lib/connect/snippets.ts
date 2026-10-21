@@ -10,8 +10,8 @@ import { apiKeyEnvName } from '@/lib/connect/env-name'
 /** The date the formats below were last compared with the linked pages. */
 export const DOCS_CHECKED = '2026-10-20'
 
-/** What stands for the key where a value has to be shown. The real key is shown once, when it is created. */
-export const KEY_PLACEHOLDER = '<YOUR_API_KEY>'
+/** A key is always `mcpg_` followed by 32 characters. A different length means the variable holds something else. */
+export const KEY_LENGTH = 37
 
 /** The Inspector builds: the current one needs Node 22.19 or newer, the v1 line needs 22.7.5 or newer. */
 export const INSPECTOR_VERSION = '2.11.0'
@@ -43,14 +43,34 @@ export interface ConnectInfo {
   slug: string
 }
 
-/** Setting the key variable for the current shell session. The value is the placeholder, to be replaced. */
+/**
+ * Setting the key variable for the current shell session. Each form asks for the key without showing it, so it
+ * does not land in the shell history (an `export NAME="key"` line would). The variable lasts for that terminal
+ * window only.
+ */
 export function envBlocks(slug: string): SnippetBlock[] {
   const name = apiKeyEnvName(slug)
   return [
-    { label: 'macOS / Linux (bash)', language: 'bash', text: `export ${name}="${KEY_PLACEHOLDER}"` },
-    { label: 'Windows (PowerShell)', language: 'powershell', text: `$env:${name} = "${KEY_PLACEHOLDER}"` },
+    { label: 'macOS / Linux (bash)', language: 'bash', text: `printf 'API key: '; read -rs ${name}; echo; export ${name}` },
+    {
+      label: 'Windows (PowerShell)',
+      language: 'powershell',
+      text: `$env:${name} = [System.Net.NetworkCredential]::new('', (Read-Host 'API key' -AsSecureString)).Password`,
+    },
   ]
 }
+
+/** Checking what the variable holds, by length, so the key itself is never printed. */
+export function lengthCheckBlocks(slug: string): SnippetBlock[] {
+  const name = apiKeyEnvName(slug)
+  return [
+    { label: 'macOS / Linux (bash)', language: 'bash', text: `echo \${#${name}}` },
+    { label: 'Windows (PowerShell)', language: 'powershell', text: `$env:${name}.Length` },
+  ]
+}
+
+/** The troubleshooting line for a connection that fails with only "fetch failed". */
+export const FETCH_FAILED_HELP = `"fetch failed" with no other detail usually means the key variable is wrong, not the network: for example a control character left by a failed paste. Check its length first; a key is ${KEY_LENGTH} characters.`
 
 const INSPECTOR_DOC = 'https://github.com/modelcontextprotocol/inspector/blob/main/docs/mcp-server-configuration.md'
 const INSPECTOR_V1_DOC = 'https://github.com/modelcontextprotocol/inspector/blob/v1/main/README.md'

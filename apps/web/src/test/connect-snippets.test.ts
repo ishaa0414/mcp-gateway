@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { apiKeyEnvName } from '@/lib/connect/env-name'
-import { buildGuides, envBlocks, INSPECTOR_V1_VERSION, INSPECTOR_VERSION, KEY_PLACEHOLDER, type ClientGuide } from '@/lib/connect/snippets'
+import { generateApiKey } from '@mcp-gateway/crypto'
+import {
+  buildGuides,
+  envBlocks,
+  FETCH_FAILED_HELP,
+  INSPECTOR_V1_VERSION,
+  INSPECTOR_VERSION,
+  KEY_LENGTH,
+  lengthCheckBlocks,
+  type ClientGuide,
+} from '@/lib/connect/snippets'
 
 describe('apiKeyEnvName', () => {
   it('upper-cases, turns every other character into "_", and ends in _MCP_KEY', () => {
@@ -46,13 +56,55 @@ describe('the guides', () => {
     expect(guides.map((g) => new URL(g.docUrl).hostname)).toEqual(['github.com', 'code.claude.com', 'cursor.com', 'code.visualstudio.com'])
   })
 
-  it('use the real URL and the slug, and a key only as the placeholder or a variable', () => {
+  it('use the real URL and the slug, and a key only as a variable or a prompt', () => {
     for (const g of guides) {
       const text = g.blocks.map((b) => b.text).join('\n')
       expect(text).toContain(URL_)
     }
     expect(everything).not.toMatch(/mcpg_/) // no API key value of any shape
-    expect(envBlocks(SLUG).map((b) => b.text)).toEqual([`export ${VAR}="${KEY_PLACEHOLDER}"`, `$env:${VAR} = "${KEY_PLACEHOLDER}"`])
+    expect(everything).not.toContain('<YOUR_API_KEY>') // there is no placeholder to replace and leave in history
+  })
+
+  describe('setting the key variable', () => {
+    const [bash, powershell] = envBlocks(SLUG).map((b) => b.text) as [string, string]
+
+    it('asks for the key without showing it (read -s for bash, Read-Host -AsSecureString for PowerShell)', () => {
+      expect(bash).toBe(`printf 'API key: '; read -rs ${VAR}; echo; export ${VAR}`)
+      expect(powershell).toBe(`$env:${VAR} = [System.Net.NetworkCredential]::new('', (Read-Host 'API key' -AsSecureString)).Password`)
+    })
+
+    it('never puts a key, or a quoted value to type one in, on the line that would reach shell history', () => {
+      expect(bash).not.toMatch(/export \w+=/) // not `export NAME="value"`
+      expect(powershell).not.toMatch(/\$env:\w+\s*=\s*["']/) // not `$env:NAME = "value"`
+      for (const text of [bash, powershell]) expect(text).not.toMatch(/mcpg_|<YOUR/)
+    })
+
+    it('uses the per-project variable, in both shells', () => {
+      expect(bash).toContain(VAR)
+      expect(powershell).toContain(VAR)
+      const other = envBlocks('3d-shop').map((b) => b.text).join(' | ')
+      expect(other).toContain('P_3D_SHOP_MCP_KEY')
+      expect(other).not.toContain(VAR)
+    })
+  })
+
+  describe('troubleshooting "fetch failed"', () => {
+    it('says what it usually means and to check the length first, with the real key length', () => {
+      expect(FETCH_FAILED_HELP).toContain('"fetch failed" with no other detail usually means the key variable is wrong')
+      expect(FETCH_FAILED_HELP).toContain('control character')
+      expect(FETCH_FAILED_HELP).toContain('Check its length first')
+      expect(FETCH_FAILED_HELP).toContain(`${KEY_LENGTH} characters`)
+    })
+
+    it('the length really is what the app generates', () => {
+      for (let i = 0; i < 20; i++) expect(generateApiKey().key).toHaveLength(KEY_LENGTH)
+    })
+
+    it('gives a length check for each shell that prints the length, not the key', () => {
+      const [bash, powershell] = lengthCheckBlocks(SLUG).map((b) => b.text)
+      expect(bash).toBe(`echo \${#${VAR}}`)
+      expect(powershell).toBe(`$env:${VAR}.Length`)
+    })
   })
 
   it('every JSON block is valid JSON', () => {

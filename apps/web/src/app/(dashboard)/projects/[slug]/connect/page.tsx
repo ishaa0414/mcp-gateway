@@ -4,7 +4,7 @@ import { getProject } from '@/actions/projects'
 import { CodeBlock } from '@/components/connect/code-block'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiKeyEnvName } from '@/lib/connect/env-name'
-import { buildGuides, CLAUDE_CONNECTORS_DOC, DOCS_CHECKED, envBlocks, KEY_PLACEHOLDER } from '@/lib/connect/snippets'
+import { buildGuides, CLAUDE_CONNECTORS_DOC, DOCS_CHECKED, envBlocks, FETCH_FAILED_HELP, lengthCheckBlocks } from '@/lib/connect/snippets'
 import { env } from '@/lib/env'
 import { mcpEndpointUrl } from '@/lib/mcp-url'
 
@@ -61,8 +61,8 @@ export default async function ConnectPage({ params }: Props) {
             <Link href={`/projects/${project.slug}/api-keys`} className="underline underline-offset-2">
               API Keys
             </Link>{' '}
-            tab (it is shown once), then keep it in the environment variable <code className="text-xs">{keyVar}</code>. Replace{' '}
-            <code className="text-xs">{KEY_PLACEHOLDER}</code> with it:
+            tab (it is shown once), then keep it in the environment variable <code className="text-xs">{keyVar}</code>. Run the line for your shell and paste the
+            key when asked; nothing is shown while you type, and the key stays out of your shell history. It lasts for that terminal window only.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -72,6 +72,18 @@ export default async function ConnectPage({ params }: Props) {
           <p className="text-xs text-muted-foreground">
             Prefer environment or input variables, as these snippets do, so a key is never committed in a project file.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Troubleshooting</CardTitle>
+          <CardDescription>{FETCH_FAILED_HELP}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {lengthCheckBlocks(project.slug).map((block) => (
+            <CodeBlock key={block.label} label={`Check the length: ${block.label}`} text={block.text} />
+          ))}
         </CardContent>
       </Card>
 
