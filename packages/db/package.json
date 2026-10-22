@@ -29,7 +29,8 @@
     "migrate:reset": "prisma migrate reset",
     "seed": "tsx prisma/seed.ts",
     "seed:analytics": "tsx prisma/seed-analytics.ts",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mcp-gateway/shared": "workspace:*",
@@ -44,6 +45,7 @@
     "dotenv": "^16.4.0",
     "prisma": "7.10.0",
     "tsx": "^4.19.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
   }
 }

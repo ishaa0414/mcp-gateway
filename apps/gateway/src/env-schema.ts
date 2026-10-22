@@ -11,6 +11,8 @@ export const gatewayEnvSchema = z
       .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex characters (32 bytes, openssl rand -hex 32)'),
     // Cap on Postgres connections (read by @mcp-gateway/db). The default of 10 can exceed a free-tier database's limit.
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).optional(),
+    // How long a query waits for a Postgres connection before failing (read by @mcp-gateway/db; default 5000).
+    DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).optional(),
     GATEWAY_PORT: port.optional(),
     // Render, Koyeb, Fly and similar hosts tell the container which port to bind through PORT.
     PORT: port.optional(),

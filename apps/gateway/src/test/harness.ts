@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { encrypt, generateApiKey } from '@mcp-gateway/crypto'
-import { db } from '@mcp-gateway/db'
+import { db, type PrismaClient } from '@mcp-gateway/db'
 import { extractTools } from '@mcp-gateway/openapi-tools'
 import { Client as ClientV2, StreamableHTTPClientTransport as TransportV2 } from '@modelcontextprotocol/client'
 import { Client as ClientV1 } from '@modelcontextprotocol/sdk/client/index.js'
@@ -255,7 +255,9 @@ export interface RunningGateway {
 // GATEWAY_TEST_LOG=1 prints the gateway's warnings during a test run (Redis failures, fail-open limiting).
 const testLogger = () => (process.env['GATEWAY_TEST_LOG'] ? { level: 'warn' } : false)
 
-export async function startGateway(options: { config?: Partial<AppConfig>; redisUrl?: string; logSink?: LogSink } = {}): Promise<RunningGateway> {
+export async function startGateway(
+  options: { config?: Partial<AppConfig>; redisUrl?: string; logSink?: LogSink; db?: PrismaClient } = {}
+): Promise<RunningGateway> {
   const redis = new Redis(options.redisUrl ?? process.env['REDIS_URL_TEST'] ?? 'redis://localhost:6379/1', {
     maxRetriesPerRequest: 1,
     connectTimeout: 1_000,
@@ -269,7 +271,7 @@ export async function startGateway(options: { config?: Partial<AppConfig>; redis
   await redis.connect().catch(() => undefined)
 
   const logSink = options.logSink ?? new CollectingSink()
-  const app = await buildApp({ db, redis, config: { ...TEST_CONFIG, ...options.config }, logSink, logger: testLogger() })
+  const app = await buildApp({ db: options.db ?? db, redis, config: { ...TEST_CONFIG, ...options.config }, logSink, logger: testLogger() })
   await app.listen({ port: 0, host: '127.0.0.1' })
   const baseUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
 

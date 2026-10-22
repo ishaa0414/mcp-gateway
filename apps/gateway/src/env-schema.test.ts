@@ -56,6 +56,14 @@ describe('gateway env schema', () => {
   })
 })
 
+describe('database connect timeout', () => {
+  it('is optional (the db package defaults to 5000 ms) and accepts 100 ms to 120 s', () => {
+    expect(parse().success).toBe(true)
+    expect(parse({ DATABASE_CONNECT_TIMEOUT_MS: '8000' }).success).toBe(true)
+    for (const bad of ['0', '99', '120001', 'soon']) expect(parse({ DATABASE_CONNECT_TIMEOUT_MS: bad }).success).toBe(false)
+  })
+})
+
 describe('call logging settings', () => {
   it('default to queue mode with a 1000-event buffer and 30-day retention', () => {
     const result = parse()

@@ -55,3 +55,6 @@ desktop.ini
 # Written and re-added by `next dev` in apps/web
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
+
+# Local scratch files (never committed)
+.scratch/

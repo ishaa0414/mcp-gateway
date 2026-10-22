@@ -1,8 +1,27 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/client/client.js'
 
-function createPrismaClient(): PrismaClient {
-  const connectionString = process.env['DATABASE_URL']
+/**
+ * How long the pool waits to open a connection (or, when it is full, to get a free one) before the query fails.
+ * pg's own default is no limit, so a database that accepts connections and never answers hangs the caller for
+ * good, and a host that drops packets takes the operating system's own timeout (21 s on Windows). 5 s covers a
+ * cold start of a suspended hosted database (Neon's free tier wakes in a few seconds); the worker, which nobody
+ * waits on, sets 10 s.
+ */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 5_000
+
+const positiveInt = (value: string | undefined): number | undefined => {
+  const n = Number(value)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+/** DATABASE_CONNECT_TIMEOUT_MS when it is a positive whole number, otherwise the default. */
+export function connectTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return positiveInt(env['DATABASE_CONNECT_TIMEOUT_MS']) ?? DEFAULT_CONNECT_TIMEOUT_MS
+}
+
+export function createPrismaClient(env: NodeJS.ProcessEnv = process.env): PrismaClient {
+  const connectionString = env['DATABASE_URL']
   if (!connectionString) {
     throw new Error(
       'DATABASE_URL is not set. This package does not load .env itself; the app importing it must.\n' +
@@ -13,10 +32,11 @@ function createPrismaClient(): PrismaClient {
   }
   // The pg default is 10 connections per client. Hosted databases (Neon's free tier, Render) and
   // test runs with many workers need a smaller, explicit cap.
-  const poolMax = Number(process.env['DATABASE_POOL_MAX'])
+  const poolMax = positiveInt(env['DATABASE_POOL_MAX'])
   const adapter = new PrismaPg({
     connectionString,
-    ...(Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {}),
+    ...(poolMax !== undefined ? { max: poolMax } : {}),
+    connectionTimeoutMillis: connectTimeoutMs(env),
   })
   return new PrismaClient({ adapter })
 }

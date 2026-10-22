@@ -131,6 +131,7 @@ The variables below are the ones you will most likely touch. `.env.example` list
 | `PLAYGROUND_RATE_PER_MIN` | `30` | Playground calls per project per minute (1–1000). |
 | `GATEWAY_INTERNAL_URL` | `GATEWAY_PUBLIC_URL` | Where the dashboard's server reaches the gateway for playground calls. |
 | `TOOL_CALL_TIMEOUT_MS` | `15000` | How long the gateway waits for your API. The playground waits this plus 5 s. Keep it equal on both sides. |
+| `DATABASE_CONNECT_TIMEOUT_MS` | `5000` (worker `10000`) | How long a query waits for a Postgres connection before failing (100–120000). A stopped database then fails in seconds instead of hanging. On a hosted database that sleeps when idle, keep it above 3000 so a cold start can connect. |
 | `GATEWAY_PUBLIC_URL` | `http://localhost:4000` | The address agents use; shown in the MCP URL and the Connect snippets. |
 
 ### Opening the dashboard
