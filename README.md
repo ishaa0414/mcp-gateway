@@ -8,7 +8,7 @@ Turn your REST API (OpenAPI spec) into a hosted, production-ready MCP server tha
 
 | Tool | Version |
 |---|---|
-| Node.js | ≥ 20.19 |
+| Node.js | ≥ 22.19 (22.23.3 recommended; `.nvmrc`) |
 | pnpm | ≥ 12 |
 | Docker Desktop | ≥ 4 (Engine running) |
 | Git | ≥ 2.38 |
@@ -84,7 +84,7 @@ curl http://localhost:4000/health
    npx @modelcontextprotocol/inspector
    ```
 
-   In the Inspector: **Add Servers → + Add manually**, set **Transport** to `streamable-http`, paste the URL and click **Add**. Open that server's **Settings → Custom Headers → + Add Header** and enter `Authorization` / `Bearer <your key>`. Switch the server on (it shows *Connected*), open **Tools**, pick one and click **Execute Tool**. The Inspector keeps headers in plain text in `~/.mcp-inspector/mcp.json`, so use a key you can revoke. On Node below 22.19, `npx` installs Inspector v1, whose screens differ: set **Transport Type** to *Streamable HTTP*, paste the URL, open **Authentication → Custom Headers**, add `Authorization` / `Bearer <your key>`, switch the header on and click **Connect**. Or without a browser:
+   In the Inspector: **Add Servers → + Add manually**, set **Transport** to `streamable-http`, paste the URL and click **Add**. Open that server's **Settings → Custom Headers → + Add Header** and enter `Authorization` / `Bearer <your key>`. Switch the server on (it shows *Connected*), open **Tools**, pick one and click **Execute Tool**. The Inspector keeps headers in plain text in `~/.mcp-inspector/mcp.json`, so use a key you can revoke. Or without a browser:
 
    ```bash
    npx @modelcontextprotocol/inspector --cli http://localhost:4000/mcp/<slug> --transport http \

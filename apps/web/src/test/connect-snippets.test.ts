@@ -5,7 +5,6 @@ import {
   buildGuides,
   envBlocks,
   FETCH_FAILED_HELP,
-  INSPECTOR_V1_VERSION,
   INSPECTOR_VERSION,
   KEY_LENGTH,
   lengthCheckBlocks,
@@ -119,15 +118,6 @@ describe('the guides', () => {
       expect(block('inspector', 'PowerShell')).toBe(
         `npx @modelcontextprotocol/inspector@${INSPECTOR_VERSION} --cli --server-url ${URL_} --transport http --header "Authorization: Bearer $env:${VAR}" --method tools/list`
       )
-    })
-
-    it('older form for Node below 22.19: pinned v1, the URL as the first argument, no --server-url', () => {
-      const bash = block('inspector', 'Inspector 1.0.2, bash')
-      const powershell = block('inspector', 'Inspector 1.0.2, PowerShell')
-      expect(INSPECTOR_V1_VERSION).toBe('1.0.2')
-      expect(bash).toBe(`npx @modelcontextprotocol/inspector@1.0.2 --cli ${URL_} --transport http --header "Authorization: Bearer $${VAR}" --method tools/list`)
-      expect(powershell).toContain(`--cli ${URL_} --transport http --header "Authorization: Bearer $env:${VAR}"`)
-      expect(bash + powershell).not.toContain('--server-url')
     })
 
     it('says that dropping --cli opens the UI, and never writes an unpinned inspector command', () => {

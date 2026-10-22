@@ -13,9 +13,8 @@ export const DOCS_CHECKED = '2026-10-20'
 /** A key is always `mcpg_` followed by 32 characters. A different length means the variable holds something else. */
 export const KEY_LENGTH = 37
 
-/** The Inspector builds: the current one needs Node 22.19 or newer, the v1 line needs 22.7.5 or newer. */
+/** The Inspector build the snippets pin. It needs Node 22.19 or newer, the repo's engines floor. */
 export const INSPECTOR_VERSION = '2.11.0'
-export const INSPECTOR_V1_VERSION = '1.0.2'
 
 export type BlockLanguage = 'bash' | 'powershell' | 'json'
 
@@ -73,7 +72,6 @@ export function lengthCheckBlocks(slug: string): SnippetBlock[] {
 export const FETCH_FAILED_HELP = `"fetch failed" with no other detail usually means the key variable is wrong, not the network: for example a control character left by a failed paste. Check its length first; a key is ${KEY_LENGTH} characters.`
 
 const INSPECTOR_DOC = 'https://github.com/modelcontextprotocol/inspector/blob/main/docs/mcp-server-configuration.md'
-const INSPECTOR_V1_DOC = 'https://github.com/modelcontextprotocol/inspector/blob/v1/main/README.md'
 export const CLAUDE_CODE_DOC = 'https://code.claude.com/docs/en/mcp'
 export const CURSOR_DOC = 'https://cursor.com/docs/context/mcp'
 export const VSCODE_DOC = 'https://code.visualstudio.com/docs/agents/reference/mcp-configuration'
@@ -86,8 +84,6 @@ function inspector({ url, slug }: ConnectInfo): ClientGuide {
   const header = (shell: 'bash' | 'powershell') => `--header "Authorization: Bearer ${shell === 'bash' ? `$${name}` : `$env:${name}`}"`
   const current = (shell: 'bash' | 'powershell') =>
     `npx @modelcontextprotocol/inspector@${INSPECTOR_VERSION} --cli --server-url ${url} --transport http ${header(shell)} --method tools/list`
-  const older = (shell: 'bash' | 'powershell') =>
-    `npx @modelcontextprotocol/inspector@${INSPECTOR_V1_VERSION} --cli ${url} --transport http ${header(shell)} --method tools/list`
 
   return {
     id: 'inspector',
@@ -98,13 +94,8 @@ function inspector({ url, slug }: ConnectInfo): ClientGuide {
     blocks: [
       { label: 'macOS / Linux (bash)', language: 'bash', text: current('bash') },
       { label: 'Windows (PowerShell)', language: 'powershell', text: current('powershell') },
-      { label: `Node older than 22.19: Inspector ${INSPECTOR_V1_VERSION}, bash`, language: 'bash', text: older('bash') },
-      { label: `Node older than 22.19: Inspector ${INSPECTOR_V1_VERSION}, PowerShell`, language: 'powershell', text: older('powershell') },
     ],
-    notes: [
-      'Running the same command without --cli opens the Inspector UI.',
-      `Inspector ${INSPECTOR_V1_VERSION} (the v1 line) takes the URL as its first argument; its README is ${INSPECTOR_V1_DOC}`,
-    ],
+    notes: ['Running the same command without --cli opens the Inspector UI.'],
   }
 }
 

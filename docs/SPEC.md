@@ -132,7 +132,7 @@ Playground tab (schema-driven form, masked upstream request and response, confir
 - Re-enable the `getPetById` tool in the demo project.
 - Check the Prisma connect timeout before deploying.
 - Playground calls in analytics, via a `source` column on the call log.
-- Upgrade to Node 22.19 or newer.
+- ✅ Upgrade to Node 22.19 or newer. *Done:* floor 22.19, target 22.23.3 (see the "Node 22.23.3" entry in [DECISIONS.md](DECISIONS.md)).
 - README screenshots, an architecture diagram and demo data; a demo video.
 *Done when:* someone new can follow the README and get everything running end-to-end, and the live demo works.
 

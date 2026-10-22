@@ -64,8 +64,7 @@ would turn those clients away, so we do not use it.
   startup and pass the already-authenticated project through `authInfo`. The handler itself does no
   authentication.
 
-**Inspector 2.9.0.** Requires Node >= 22.19 (the repo's engines are looser; this machine's 22.13
-printed an engine warning but ran fine). CLI: `--cli <url> --transport http --header "Authorization:
+**Inspector 2.9.0.** Requires Node >= 22.19 (the repo's engines floor). CLI: `--cli <url> --transport http --header "Authorization:
 Bearer <key>" --method tools/list`, or `--method tools/call --tool-name <name> --tool-arg key=value`
 (numbers such as `petId=1` arrive typed, so integer parameters validate).
 

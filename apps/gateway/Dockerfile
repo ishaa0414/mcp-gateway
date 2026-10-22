@@ -12,7 +12,8 @@
 #   LOG_FLUSH_INTERVAL_MS, LOG_SHUTDOWN_FLUSH_MS. See .env.example.
 # The image does not run database migrations; apply them with `pnpm db:migrate:deploy`.
 
-ARG NODE_VERSION=22
+# Keep in step with .nvmrc and node-version in .github/workflows/ci.yml (the CI image job checks `node -v`).
+ARG NODE_VERSION=22.23.3
 
 # ---- build: install everything, compile, then extract just the gateway -----------------------
 FROM node:${NODE_VERSION}-slim AS build
