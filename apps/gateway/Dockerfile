@@ -43,6 +43,11 @@ RUN pnpm --filter "@mcp-gateway/gateway..." run build
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm --filter @mcp-gateway/gateway deploy --prod /out
 
+# Remove what the gateway never loads (maps, type declarations, other databases' Prisma compilers, tests, seed code, ...):
+# about 80 MB of the 115 MB that is left once the Prisma CLI is gone. CI (check-image.sh) fails if any of it returns.
+COPY apps/gateway/scripts/prune-image.sh /tmp/prune-image.sh
+RUN cd /out && sh /tmp/prune-image.sh
+
 # ---- runtime ----------------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-slim AS runtime
 ENV NODE_ENV=production

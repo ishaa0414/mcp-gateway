@@ -3,6 +3,7 @@
 .github
 .turbo
 .vscode
+.scratch
 .idea
 
 **/node_modules

@@ -168,6 +168,13 @@ jobs:
             test -z "$(find dist -name "*.test.js")" &&
             test "$(id -u)" != 0'
 
+      # See apps/gateway/scripts/check-image.sh for the list. The size limit is on the files under /app; the image size is
+      # printed so a limit for it can be set once there is a run to read it from.
+      - name: The image has no seed code, tests, sources or Prisma tooling, and stays under its size limit
+        run: |
+          echo "image size: $(docker image inspect mcp-gateway:ci --format '{{.Size}}') bytes"
+          docker run --rm -i --entrypoint sh mcp-gateway:ci -s < apps/gateway/scripts/check-image.sh
+
       - name: Without configuration it refuses to start and lists what is missing
         run: |
           if docker run --rm mcp-gateway:ci > /tmp/noconfig.log 2>&1; then
@@ -177,6 +184,8 @@ jobs:
           grep -q 'DATABASE_URL: missing' /tmp/noconfig.log
           grep -q 'ENCRYPTION_KEY: missing' /tmp/noconfig.log
 
+      # /health runs a Prisma query (apps/gateway/src/app.ts: db.$queryRaw SELECT 1), which loads the PostgreSQL query
+      # compiler and the pg adapter. A file removed from the image that the client needs makes it answer 503, and this step fail.
       - name: Starts with environment variables only, and answers
         run: |
           docker run -d --name gw --network host \
