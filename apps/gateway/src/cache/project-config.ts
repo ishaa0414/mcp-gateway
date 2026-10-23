@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@mcp-gateway/db'
-import { buildRequestMap, toAgentSchema } from '@mcp-gateway/openapi-tools'
-import type { RequestMap } from '@mcp-gateway/openapi-tools'
+import { buildRequestMap, toAgentSchema } from '@mcp-gateway/openapi-tools/runtime'
+import type { RequestMap } from '@mcp-gateway/openapi-tools/runtime'
 import { projectConfigKey } from '@mcp-gateway/shared'
 import type { AppConfig, Logger } from '../config.js'
 import type { SafeRedis } from './safe-redis.js'
