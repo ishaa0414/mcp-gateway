@@ -9,6 +9,7 @@ out/
 
 # Next.js
 .next/
+.next-e2e/
 .vercel/
 
 # Turborepo
@@ -58,3 +59,8 @@ apps/web/CLAUDE.md
 
 # Local scratch files (never committed)
 .scratch/
+
+# Playwright (apps/e2e)
+test-results/
+playwright-report/
+blob-report/

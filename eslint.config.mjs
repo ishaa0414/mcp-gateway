@@ -32,10 +32,24 @@ export default tseslint.config(
     },
   },
   {
+    // Tests wait for something they can observe (an assertion, a URL, expect.poll), never for time.
+    files: ['apps/e2e/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "CallExpression[callee.property.name='waitForTimeout']", message: 'Do not wait for time: assert on what you expect to appear.' },
+        { selector: "CallExpression[callee.property.name='waitForLoadState'][arguments.0.value='networkidle']", message: 'networkidle is a timing guess: assert on what you expect to appear.' },
+      ],
+    },
+  },
+  {
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
       '**/.next/**',
+      '**/.next-e2e/**',
+      '**/test-results/**',
+      '**/playwright-report/**',
       '**/coverage/**',
       '**/generated/**',
       '**/.turbo/**',

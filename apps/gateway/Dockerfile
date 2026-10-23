@@ -24,6 +24,7 @@ WORKDIR /repo
 # Manifests first: the install layer is reused until a dependency actually changes.
 # .pnpmfile.cjs keeps the Prisma CLI out of the install; the lockfile records its checksum, so --frozen-lockfile needs it.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs turbo.json tsconfig.base.json ./
+COPY apps/e2e/package.json apps/e2e/
 COPY apps/gateway/package.json apps/gateway/
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/

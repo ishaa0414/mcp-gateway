@@ -1,0 +1,24 @@
+{
+  "name": "@mcp-gateway/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e:build": "node scripts/build.mjs",
+    "e2e": "node scripts/build.mjs && playwright test",
+    "e2e:run": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@mcp-gateway/db": "workspace:*",
+    "@mcp-gateway/shared": "workspace:*",
+    "ioredis": "^5.4.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~6.0.3"
+  }
+}

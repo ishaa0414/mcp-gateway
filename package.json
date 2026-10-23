@@ -11,7 +11,9 @@
     "db:migrate": "pnpm --filter @mcp-gateway/db run migrate",
     "db:migrate:deploy": "pnpm --filter @mcp-gateway/db run migrate:deploy",
     "db:seed": "pnpm --filter @mcp-gateway/db run seed",
-    "db:seed:analytics": "pnpm --filter @mcp-gateway/db run seed:analytics"
+    "db:seed:analytics": "pnpm --filter @mcp-gateway/db run seed:analytics",
+    "e2e": "pnpm --filter @mcp-gateway/e2e e2e",
+    "e2e:run": "pnpm --filter @mcp-gateway/e2e e2e:run"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -149,6 +149,10 @@ Only if Redis is unreachable at that moment is the clear skipped (the dashboard 
 
 The Playground reads the same cached config as agents do.
 
+### End-to-end tests
+
+`pnpm e2e` builds the gateway and a production build of the dashboard (into `apps/web/.next-e2e`, so a running `pnpm dev` is not affected), starts them with a fake upstream on ports 3110, 4110 and 4210, and runs the Playwright flows in `apps/e2e`. It needs Postgres and Redis up (`docker compose up -d`), uses its own database `mcpgateway_test_e2e` and Redis database 3, and opens your installed Chrome. `pnpm e2e:run` skips the build. Do not run it while `pnpm test` is running: the browser, `next start` and the gateway need a core or two and about 2 GB.
+
 ## Run the gateway in Docker
 
 The gateway ships as a standalone image, configured only through environment variables, so it can run on Render, Koyeb or any VM:
