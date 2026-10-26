@@ -119,6 +119,102 @@ jobs:
           cat /tmp/web.log
           $ok
 
+  # The Playwright flows (apps/e2e) against a production build of the dashboard and the built gateway, in parallel with
+  # the other jobs. Informational for now: it is not a required check until it has run green for a while (see
+  # docs/DECISIONS.md). Put [e2e-repeat] in a commit message on a push to run the suite five times in a row, to look for flakes.
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mcpgateway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The e2e database is derived from this name: mcpgateway_test_e2e.
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/mcpgateway_test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          # Keep in step with .nvmrc and NODE_VERSION in apps/gateway/Dockerfile.
+          node-version: 22.23.3
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright's Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @mcp-gateway/e2e exec playwright install --with-deps chromium
+
+      - name: Install Chromium's system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @mcp-gateway/e2e exec playwright install-deps chromium
+
+      - name: Build the gateway and a production build of the dashboard
+        run: pnpm --filter @mcp-gateway/e2e e2e:build
+
+      # A production build of the dashboard has the SSRF allowance for private addresses compiled out (NODE_ENV is a
+      # constant there). The first check proves the SSRF code is in the bundle, so the second cannot pass by looking at nothing.
+      - name: The dashboard bundle has the SSRF check and no private-address allowance
+        run: |
+          grep -rl --include='*.js' 'Blocked IP address' apps/web/.next-e2e/server
+          if grep -rl --include='*.js' 'ALLOW_PRIVATE_UPSTREAMS' apps/web/.next-e2e/server; then
+            echo "ALLOW_PRIVATE_UPSTREAMS is in the production dashboard bundle"; exit 1
+          fi
+
+      - name: Run the flows
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          repeat=1
+          case "$COMMIT_MESSAGE" in *'[e2e-repeat]'*) repeat=5 ;; esac
+          echo "running the suite $repeat time(s)"
+          pnpm --filter @mcp-gateway/e2e e2e:run --repeat-each="$repeat"
+
+      - name: Keep the report and traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            apps/e2e/playwright-report
+            apps/e2e/test-results
+          retention-days: 7
+
   # Builds the gateway image and starts it, in parallel with the job above. Only the unauthenticated
   # paths are exercised (no migrations are applied here); the MCP behaviour itself is covered by the
   # gateway's integration tests.
@@ -174,6 +270,20 @@ jobs:
         run: |
           echo "image size: $(docker image inspect mcp-gateway:ci --format '{{.Size}}') bytes"
           docker run --rm -i --entrypoint sh mcp-gateway:ci -s < apps/gateway/scripts/check-image.sh
+
+      # The private-address allowance for local upstreams (used by the e2e gateway) must not be usable in the shipped image,
+      # which runs with NODE_ENV=production. The other variables are valid, so this is the only thing wrong.
+      - name: It refuses to start with ALLOW_PRIVATE_UPSTREAMS=true
+        run: |
+          if docker run --rm -e ALLOW_PRIVATE_UPSTREAMS=true \
+            -e DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mcpgateway \
+            -e REDIS_URL=redis://localhost:6379 \
+            -e ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            mcp-gateway:ci > /tmp/private.log 2>&1; then
+            echo "expected a non-zero exit"; exit 1
+          fi
+          cat /tmp/private.log
+          grep -q 'ALLOW_PRIVATE_UPSTREAMS must not be true in production' /tmp/private.log
 
       - name: Without configuration it refuses to start and lists what is missing
         run: |

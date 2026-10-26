@@ -22,7 +22,7 @@ export async function whenHydrated(element: Locator): Promise<void> {
  * Upper bound for the two steps that hash a password (argon2 in the server action): sign-up and sign-in. On a loaded
  * machine they take well over the default 10 s; on a quiet one a second or two. It is a limit, not a wait.
  */
-const PASSWORD_HASHING_MS = 45_000
+const PASSWORD_HASHING_MS = 60_000
 
 export interface Account {
   name: string

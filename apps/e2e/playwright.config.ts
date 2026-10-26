@@ -21,7 +21,9 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   // One flow is several page loads and two password hashes; the limit only matters when something is stuck.
   timeout: 120_000,
-  expect: { timeout: 10_000 },
+  // A limit, not a wait: assertions return as soon as they hold. Several wait on a server action and a page refresh, which
+  // took over 10 s with the CPU oversubscribed twice over (the flow had saved the change; the page was late).
+  expect: { timeout: 30_000 },
   reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: WEB_URL,

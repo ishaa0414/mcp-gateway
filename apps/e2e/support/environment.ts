@@ -82,6 +82,9 @@ function shared(): Record<string, string> {
     ENCRYPTION_KEY: process.env['ENCRYPTION_KEY']!,
     PLAYGROUND_SECRET: process.env['PLAYGROUND_SECRET']!,
     TOOL_CALL_TIMEOUT_MS: '5000',
+    // Production fails a database connect after 5 s (packages/db). This run is not a test of that, and a starved laptop
+    // (the Playground flow failed once in 12 on a connect that took longer) should not turn it into a flaky failure.
+    DATABASE_CONNECT_TIMEOUT_MS: '30000',
   }
 }
 
