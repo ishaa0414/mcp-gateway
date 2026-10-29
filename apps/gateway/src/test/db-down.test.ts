@@ -69,7 +69,7 @@ describe('Postgres is down', () => {
 
   it("/ready's error body never carries the connection string or driver error text, only {postgres, redis}", async () => {
     const res = await fetch(`${down.baseUrl}/ready`)
-    const body = await res.json()
+    const body = (await res.json()) as Record<string, unknown>
     expect(Object.keys(body).sort()).toEqual(['postgres', 'redis'])
     const text = JSON.stringify(body)
     expect(text).not.toMatch(/postgres:\/\/|ECONNREFUSED|ETIMEDOUT|127\.0\.0\.1|localhost/i)
