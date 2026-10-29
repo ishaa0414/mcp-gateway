@@ -323,3 +323,27 @@ jobs:
 
           docker logs gw
           [ "$ready" = 200 ] && [ "$noauth" = 401 ] && [ "$wrongmethod" = 405 ]
+
+      # The ₹0 deploy runs with no worker (a free Redis plan cannot afford BullMQ's polling), so the
+      # gateway must write call logs straight to Postgres on its own. This proves LOG_SINK=direct works
+      # with no worker container anywhere in this job, not just that the flag is accepted.
+      - name: Starts with LOG_SINK=direct (no worker) and still answers /ready
+        run: |
+          docker run -d --name gw-logsink --network host \
+            -e DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mcpgateway \
+            -e REDIS_URL=redis://localhost:6379 \
+            -e ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            -e LOG_SINK=direct \
+            -e PORT=4101 \
+            mcp-gateway:ci
+
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null http://localhost:4101/health && break
+            sleep 1
+          done
+
+          ready=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4101/ready)
+          echo "ready=$ready (expect 200)"
+
+          docker logs gw-logsink
+          [ "$ready" = 200 ]
