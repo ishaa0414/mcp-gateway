@@ -176,9 +176,20 @@ describe('Redis unavailable', () => {
   it('reports Redis as unhealthy but stays up', async () => {
     const noRedis = await startGateway({ redisUrl: 'redis://127.0.0.1:1' })
     try {
-      const res = await fetch(`${noRedis.baseUrl}/health`)
+      const res = await fetch(`${noRedis.baseUrl}/ready`)
       expect(res.status).toBe(503)
       expect(await res.json()).toMatchObject({ postgres: 'ok', redis: 'error' })
+    } finally {
+      await noRedis.close()
+    }
+  })
+
+  it('/health (liveness) stays 200 even though Redis is down', async () => {
+    const noRedis = await startGateway({ redisUrl: 'redis://127.0.0.1:1' })
+    try {
+      const res = await fetch(`${noRedis.baseUrl}/health`)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ status: 'ok' })
     } finally {
       await noRedis.close()
     }

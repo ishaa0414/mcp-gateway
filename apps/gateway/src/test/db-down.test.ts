@@ -59,11 +59,25 @@ describe('Postgres is down', () => {
     expect(res.body).toEqual({ jsonrpc: '2.0', error: { code: -32603, message: 'The gateway is temporarily unavailable' }, id: null })
   })
 
-  it('/health reports postgres as an error within the connect timeout', async () => {
+  it('/ready reports postgres as an error within the connect timeout', async () => {
     const started = performance.now()
-    const res = await fetch(`${down.baseUrl}/health`)
+    const res = await fetch(`${down.baseUrl}/ready`)
     expect(performance.now() - started).toBeLessThan(FAIL_WITHIN_MS)
     expect(res.status).toBe(503)
     expect(await res.json()).toMatchObject({ postgres: 'error', redis: 'ok' })
+  })
+
+  it("/ready's error body never carries the connection string or driver error text, only {postgres, redis}", async () => {
+    const res = await fetch(`${down.baseUrl}/ready`)
+    const body = await res.json()
+    expect(Object.keys(body).sort()).toEqual(['postgres', 'redis'])
+    const text = JSON.stringify(body)
+    expect(text).not.toMatch(/postgres:\/\/|ECONNREFUSED|ETIMEDOUT|127\.0\.0\.1|localhost/i)
+  })
+
+  it('/health (liveness) stays 200 even though Postgres is down', async () => {
+    const res = await fetch(`${down.baseUrl}/health`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'ok' })
   })
 })

@@ -68,7 +68,10 @@ pnpm db:seed       # Seed the database
 
 ```bash
 curl http://localhost:4000/health
-# → { "postgres": "ok", "redis": "ok" }
+# → { "status": "ok" }               # liveness only: is the process up
+
+curl http://localhost:4000/ready
+# → { "postgres": "ok", "redis": "ok" }   # 503 if either is unreachable
 ```
 
 ## Try it: from an OpenAPI spec to MCP Inspector

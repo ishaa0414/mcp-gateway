@@ -15,7 +15,7 @@ const redis = new Redis(env.REDIS_URL, {
   enableOfflineQueue: false,
   lazyConnect: true,
 })
-redis.on('error', () => undefined) // reported by the cache wrapper and /health; do not crash on it
+redis.on('error', () => undefined) // reported by the cache wrapper and /ready; do not crash on it
 
 // The app's own logger does not exist yet; the sink needs one to report problems.
 const bootLog = {

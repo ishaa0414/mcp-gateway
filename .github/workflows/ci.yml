@@ -294,8 +294,9 @@ jobs:
           grep -q 'DATABASE_URL: missing' /tmp/noconfig.log
           grep -q 'ENCRYPTION_KEY: missing' /tmp/noconfig.log
 
-      # /health runs a Prisma query (apps/gateway/src/app.ts: db.$queryRaw SELECT 1), which loads the PostgreSQL query
+      # /ready runs a Prisma query (apps/gateway/src/app.ts: db.$queryRaw SELECT 1), which loads the PostgreSQL query
       # compiler and the pg adapter. A file removed from the image that the client needs makes it answer 503, and this step fail.
+      # (/health is liveness only now and would stay 200 regardless, so it can't prove this.)
       - name: Starts with environment variables only, and answers
         run: |
           docker run -d --name gw --network host \
@@ -315,10 +316,10 @@ jobs:
             got=$(curl -s -o /dev/null -w '%{http_code}' "$@")
             echo "$got"
           }
-          health=$(check http://localhost:4100/health)
+          ready=$(check http://localhost:4100/ready)
           noauth=$(check -X POST -H 'content-type: application/json' -d '{}' http://localhost:4100/mcp/anything)
           wrongmethod=$(check http://localhost:4100/mcp/anything)
-          echo "health=$health (expect 200) unauthenticated=$noauth (expect 401) GET=$wrongmethod (expect 405)"
+          echo "ready=$ready (expect 200) unauthenticated=$noauth (expect 401) GET=$wrongmethod (expect 405)"
 
           docker logs gw
-          [ "$health" = 200 ] && [ "$noauth" = 401 ] && [ "$wrongmethod" = 405 ]
+          [ "$ready" = 200 ] && [ "$noauth" = 401 ] && [ "$wrongmethod" = 405 ]

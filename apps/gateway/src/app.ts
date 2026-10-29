@@ -72,14 +72,25 @@ export async function buildApp({ db, redis, config, logSink, logger }: AppDeps):
   // The dashboard's playground. Without a secret there is nothing to verify requests with, so no route.
   if (config.playgroundSecret) registerPlaygroundRoutes(app, { db, redis, cache, config, log, validators, rateLimiter }, config.playgroundSecret)
 
+  // Liveness: is the process up. No Postgres, no Redis — a keep-warm ping here must never
+  // reach Neon or defeat its autosuspend. Render's Health Check Path and UptimeRobot use this.
   app.get('/health', async (_req, reply) => {
+    return reply.status(200).send({ status: 'ok' })
+  })
+
+  // Readiness: can this process actually serve a call right now. Response body stays
+  // {postgres, redis} only — never the caught error's message, which can carry a connection
+  // string. The message goes to the log, not the reply.
+  app.get('/ready', async (_req, reply) => {
     const status: Record<string, string> = {}
 
     try {
+      const started = performance.now()
       await db.$queryRaw`SELECT 1`
+      app.log.info({ ms: Math.round(performance.now() - started) }, 'postgres readiness check')
       status['postgres'] = 'ok'
     } catch (err) {
-      app.log.error(err, 'Postgres health check failed')
+      app.log.error(err, 'Postgres readiness check failed')
       status['postgres'] = 'error'
     }
 
@@ -87,7 +98,7 @@ export async function buildApp({ db, redis, config, logSink, logger }: AppDeps):
       const pong = await redis.ping()
       status['redis'] = pong === 'PONG' ? 'ok' : 'error'
     } catch (err) {
-      app.log.error(err, 'Redis health check failed')
+      app.log.error(err, 'Redis readiness check failed')
       status['redis'] = 'error'
     }
 

@@ -59,7 +59,10 @@ USER node
 
 EXPOSE 4000
 
-# /health checks Postgres and Redis; the port is whatever the platform assigned.
+# /health is liveness only (no Postgres, no Redis): is the process still up. The port is
+# whatever the platform assigned. Real dependency health is /ready, which this directive
+# deliberately does not use — a container should not restart over a Redis blip it is designed
+# to survive (see apps/gateway/src/app.ts).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||process.env.GATEWAY_PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
